@@ -73,8 +73,12 @@ weathernext-download --date 20220101 --v3p2 --both --atcf
 - `--date YYYYMMDD` downloads all four cycles on one day.
 - `--date YYYYMM` downloads all four cycles for every day in one month.
 - `--date YYYY` downloads all four cycles for every day in one year.
-- With neither option, all cycles from `2022-01-01` through the UTC date 24
-  hours before execution are downloaded.
+- Date selections are capped at the date obtained from current UTC time minus
+  24 hours and restricted to the selected model's temporal coverage. A period
+  with no overlap exits with an error instead of sending invalid requests.
+- With neither option, all cycles within the selected model's temporal coverage
+  are downloaded through the date obtained from current UTC time minus 24
+  hours.
 
 ### Product selection
 

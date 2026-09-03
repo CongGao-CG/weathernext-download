@@ -10,6 +10,7 @@ import sys
 import time as time_module
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from itertools import chain
 from pathlib import Path
 from typing import Iterable, Iterator
 from urllib.error import HTTPError, URLError
@@ -20,6 +21,15 @@ BASE_URL = "https://deepmind.google.com/science/weatherlab/download/cyclones"
 FIRST_DEFAULT_DATE = date(2022, 1, 1)
 FORECAST_HOURS = (0, 6, 12, 18)
 CHUNK_SIZE = 1024 * 1024
+
+# Inclusive UTC initialization-time boundaries observed in Weather Lab.
+MODEL_COVERAGE: dict[str, tuple[datetime, datetime | None]] = {
+    "OPER": (datetime(2025, 6, 12, 0), None),
+    "FNV3P2": (datetime(2022, 1, 1, 0), None),
+    "FNV3P1": (datetime(2022, 1, 1, 0), None),
+    "FNV3P0": (datetime(2022, 1, 1, 0), datetime(2026, 5, 28, 12)),
+    "FNV3_LARGE_ENSEMBLE": (datetime(2025, 10, 18, 0), None),
+}
 
 
 @dataclass(frozen=True)
@@ -71,7 +81,7 @@ def parse_date_prefix(value: str) -> str:
     return value
 
 
-def dates_for_prefix(value: str) -> Iterator[date]:
+def dates_for_prefix(value: str, end_limit: date | None = None) -> Iterator[date]:
     year = int(value[:4])
     if len(value) == 4:
         start = date(year, 1, 1)
@@ -83,6 +93,8 @@ def dates_for_prefix(value: str) -> Iterator[date]:
     else:
         start = end = datetime.strptime(value, "%Y%m%d").date()
 
+    if end_limit is not None:
+        end = min(end, end_limit)
     yield from date_range(start, end)
 
 
@@ -99,11 +111,24 @@ def forecast_times_for_dates(dates: Iterable[date]) -> Iterator[datetime]:
             yield datetime(day.year, day.month, day.day, hour)
 
 
+def latest_download_date() -> date:
+    return (datetime.now(timezone.utc) - timedelta(hours=24)).date()
+
+
 def default_forecast_times() -> Iterator[datetime]:
-    last_date = (datetime.now(timezone.utc) - timedelta(hours=24)).date()
+    last_date = latest_download_date()
     if last_date < FIRST_DEFAULT_DATE:
         return
     yield from forecast_times_for_dates(date_range(FIRST_DEFAULT_DATE, last_date))
+
+
+def restrict_to_model_coverage(
+    forecast_times: Iterable[datetime], model: str
+) -> Iterator[datetime]:
+    start, end = MODEL_COVERAGE[model]
+    for forecast_time in forecast_times:
+        if forecast_time >= start and (end is None or forecast_time <= end):
+            yield forecast_time
 
 
 def download_file(url: str, destination: Path, timeout: float, retries: int) -> str:
@@ -139,15 +164,26 @@ def build_parser() -> argparse.ArgumentParser:
         description="Download paired Weather Lab cyclone CSV or ATCF files.",
         epilog=(
             "With no --time or --date, downloads every 00/06/12/18 cycle from "
-            "2022-01-01 through the date 24 hours ago in UTC. With no product "
-            "flag, --both is used. With no format flag, --csv is used. With no "
-            "model flag, --oper is used."
+            "2022-01-01 through the date 24 hours ago in UTC, restricted to "
+            "the selected model's coverage. With no product flag, --both is "
+            "used. With no format flag, --csv is used. With no model flag, "
+            "--oper is used."
         ),
     )
 
     period = parser.add_mutually_exclusive_group()
-    period.add_argument("--time", type=parse_time, metavar="YYYYMMDDHH")
-    period.add_argument("--date", type=parse_date_prefix, metavar="YYYY[MM[DD]]")
+    period.add_argument(
+        "--time",
+        type=parse_time,
+        metavar="YYYYMMDDHH",
+        help="download one cycle within the selected model's coverage",
+    )
+    period.add_argument(
+        "--date",
+        type=parse_date_prefix,
+        metavar="YYYY[MM[DD]]",
+        help="download the selected period within current and model coverage",
+    )
 
     product = parser.add_mutually_exclusive_group()
     product.add_argument("--ensemble-mean", "--ensemble_mean", action="store_true")
@@ -201,10 +237,13 @@ def selected_products(args: argparse.Namespace) -> list[Product]:
 
 def selected_forecast_times(args: argparse.Namespace) -> Iterable[datetime]:
     if args.time is not None:
-        return (args.time,)
-    if args.date is not None:
-        return forecast_times_for_dates(dates_for_prefix(args.date))
-    return default_forecast_times()
+        forecast_times: Iterable[datetime] = (args.time,)
+    elif args.date is not None:
+        dates = dates_for_prefix(args.date, end_limit=latest_download_date())
+        forecast_times = forecast_times_for_dates(dates)
+    else:
+        forecast_times = default_forecast_times()
+    return restrict_to_model_coverage(forecast_times, args.model)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -216,11 +255,20 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--retries cannot be negative")
 
     products = selected_products(args)
+    forecast_times = iter(selected_forecast_times(args))
+    try:
+        first_forecast_time = next(forecast_times)
+    except StopIteration:
+        parser.error(
+            f"the requested time does not overlap current availability and "
+            f"{args.model} model coverage"
+        )
+
     failures: list[tuple[str, BaseException]] = []
     downloaded = 0
     skipped = 0
 
-    for forecast_time in selected_forecast_times(args):
+    for forecast_time in chain((first_forecast_time,), forecast_times):
         for product in products:
             destination = product.output_dir / filename_for(
                 forecast_time, args.file_format, args.model
