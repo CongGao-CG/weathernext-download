@@ -2,7 +2,7 @@
 
 `weathernext-download` downloads paired tropical-cyclone forecast files from
 Google DeepMind Weather Lab. It supports ensemble and ensemble-mean products,
-CSV and ATCF formats, and the OPER and FNV3 model families.
+CSV and ATCF formats, and the OPER, WNV3, and FNV3 model families.
 
 ## Installation
 
@@ -28,6 +28,7 @@ tracks for verification. Every model below is available as an ensemble mean
 | Model | Model long name | Option | Products | Formats | Initialization cycles | Temporal coverage |
 | --- | --- | --- | --- | --- | --- | --- |
 | OPER | WeatherNext Cyclones Operational | `--oper` (default) | Ensemble mean and ensemble members | CSV and ATCF | 00, 06, 12, and 18 UTC | 2025-06-12 onward |
+| WNV3 | WeatherNext 3 Cyclones | `--wnv3` | Ensemble mean and ensemble members | CSV and ATCF | 00, 06, 12, and 18 UTC; 2025 only: 06 and 18 UTC | 2024-01-01 onward |
 | FNV3P2 | WeatherNext 2 Cyclones (r2) | `--v3p2` | Ensemble mean and ensemble members | CSV and ATCF | 00, 06, 12, and 18 UTC | 2022-01-01 onward |
 | FNV3P1 | WeatherNext 2 Cyclones (r1) | `--v3p1` | Ensemble mean and ensemble members | CSV and ATCF | 00, 06, 12, and 18 UTC | 2022-01-01 onward |
 | FNV3P0 | WeatherNext 2 Cyclones (r0) | `--v3p0` | Ensemble mean and ensemble members | CSV and ATCF | 00, 06, 12, and 18 UTC | 2022-01-01 through 2026-05-28 12 UTC |
@@ -94,6 +95,7 @@ weathernext-download --date 20220101 --v3p2 --both --atcf
 ### Model selection
 
 - `--oper` for `OPER` (default)
+- `--wnv3` for `WNV3`
 - `--v3p2` for `FNV3P2`
 - `--v3p1` for `FNV3P1`
 - `--v3p0` for `FNV3P0`

@@ -25,6 +25,7 @@ CHUNK_SIZE = 1024 * 1024
 # Inclusive UTC initialization-time boundaries observed in Weather Lab.
 MODEL_COVERAGE: dict[str, tuple[datetime, datetime | None]] = {
     "OPER": (datetime(2025, 6, 12, 0), None),
+    "WNV3": (datetime(2024, 1, 1, 0), None),
     "FNV3P2": (datetime(2022, 1, 1, 0), None),
     "FNV3P1": (datetime(2022, 1, 1, 0), None),
     "FNV3P0": (datetime(2022, 1, 1, 0), datetime(2026, 5, 28, 12)),
@@ -127,8 +128,12 @@ def restrict_to_model_coverage(
 ) -> Iterator[datetime]:
     start, end = MODEL_COVERAGE[model]
     for forecast_time in forecast_times:
-        if forecast_time >= start and (end is None or forecast_time <= end):
-            yield forecast_time
+        if forecast_time < start or (end is not None and forecast_time > end):
+            continue
+        if model == "WNV3" and forecast_time.year == 2025:
+            if forecast_time.hour not in (6, 18):
+                continue
+        yield forecast_time
 
 
 def download_file(url: str, destination: Path, timeout: float, retries: int) -> str:
@@ -201,6 +206,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     model = parser.add_mutually_exclusive_group()
     model.add_argument("--oper", action="store_const", const="OPER", dest="model")
+    model.add_argument("--wnv3", action="store_const", const="WNV3", dest="model")
     model.add_argument("--v3p2", action="store_const", const="FNV3P2", dest="model")
     model.add_argument("--v3p1", action="store_const", const="FNV3P1", dest="model")
     model.add_argument("--v3p0", action="store_const", const="FNV3P0", dest="model")
