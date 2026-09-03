@@ -1,0 +1,25 @@
+# Byte-compiled files and caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Packaging artifacts
+build/
+dist/
+*.egg-info/
+
+# Downloaded data
+ensemble/
+ensemble_mean/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+

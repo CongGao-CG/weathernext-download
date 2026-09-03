@@ -1,0 +1,251 @@
+#!/usr/bin/env python3
+"""Download Weather Lab cyclone CSV or ATCF files."""
+
+from __future__ import annotations
+
+import argparse
+import calendar
+import os
+import sys
+import time as time_module
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Iterable, Iterator
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+
+BASE_URL = "https://deepmind.google.com/science/weatherlab/download/cyclones"
+FIRST_DEFAULT_DATE = date(2022, 1, 1)
+FORECAST_HOURS = (0, 6, 12, 18)
+CHUNK_SIZE = 1024 * 1024
+
+
+@dataclass(frozen=True)
+class Product:
+    name: str
+    output_dir: Path
+
+    def url_for(
+        self, forecast_time: datetime, file_format: str, model: str
+    ) -> str:
+        filename = filename_for(forecast_time, file_format, model)
+        return f"{BASE_URL}/{model}/{self.name}/paired/{file_format}/{filename}"
+
+
+def filename_for(forecast_time: datetime, file_format: str, model: str) -> str:
+    if file_format == "atcf":
+        suffix = forecast_time.strftime("%Y_%m_%dT%H_00_atcf_a_deck.txt")
+    else:
+        suffix = forecast_time.strftime("%Y_%m_%dT%H_00_paired.csv")
+    return f"{model}_{suffix}"
+
+
+def parse_time(value: str) -> datetime:
+    if len(value) != 10 or not value.isdigit():
+        raise argparse.ArgumentTypeError("time must have the format YYYYMMDDHH")
+    try:
+        result = datetime.strptime(value, "%Y%m%d%H")
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(f"invalid time {value!r}: {error}") from error
+    if result.hour not in FORECAST_HOURS:
+        allowed = ", ".join(f"{hour:02d}" for hour in FORECAST_HOURS)
+        raise argparse.ArgumentTypeError(f"hour must be one of: {allowed}")
+    return result
+
+
+def parse_date_prefix(value: str) -> str:
+    if len(value) not in (4, 6, 8) or not value.isdigit():
+        raise argparse.ArgumentTypeError("date must have the format YYYY, YYYYMM, or YYYYMMDD")
+
+    try:
+        if len(value) == 4:
+            datetime.strptime(value, "%Y")
+        elif len(value) == 6:
+            datetime.strptime(value, "%Y%m")
+        else:
+            datetime.strptime(value, "%Y%m%d")
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(f"invalid date {value!r}: {error}") from error
+    return value
+
+
+def dates_for_prefix(value: str) -> Iterator[date]:
+    year = int(value[:4])
+    if len(value) == 4:
+        start = date(year, 1, 1)
+        end = date(year, 12, 31)
+    elif len(value) == 6:
+        month = int(value[4:6])
+        start = date(year, month, 1)
+        end = date(year, month, calendar.monthrange(year, month)[1])
+    else:
+        start = end = datetime.strptime(value, "%Y%m%d").date()
+
+    yield from date_range(start, end)
+
+
+def date_range(start: date, end: date) -> Iterator[date]:
+    current = start
+    while current <= end:
+        yield current
+        current += timedelta(days=1)
+
+
+def forecast_times_for_dates(dates: Iterable[date]) -> Iterator[datetime]:
+    for day in dates:
+        for hour in FORECAST_HOURS:
+            yield datetime(day.year, day.month, day.day, hour)
+
+
+def default_forecast_times() -> Iterator[datetime]:
+    last_date = (datetime.now(timezone.utc) - timedelta(hours=24)).date()
+    if last_date < FIRST_DEFAULT_DATE:
+        return
+    yield from forecast_times_for_dates(date_range(FIRST_DEFAULT_DATE, last_date))
+
+
+def download_file(url: str, destination: Path, timeout: float, retries: int) -> str:
+    """Download one URL atomically, returning ``downloaded`` or ``skipped``."""
+    if destination.is_file() and destination.stat().st_size > 0:
+        return "skipped"
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.{os.getpid()}.part")
+    request = Request(url, headers={"User-Agent": "weathernext-downloader/1.0"})
+
+    try:
+        for attempt in range(retries + 1):
+            try:
+                with urlopen(request, timeout=timeout) as response, temporary.open("wb") as output:
+                    while chunk := response.read(CHUNK_SIZE):
+                        output.write(chunk)
+                temporary.replace(destination)
+                return "downloaded"
+            except (HTTPError, URLError, TimeoutError, OSError):
+                temporary.unlink(missing_ok=True)
+                if attempt == retries:
+                    raise
+                time_module.sleep(min(2**attempt, 8))
+    finally:
+        temporary.unlink(missing_ok=True)
+
+    raise RuntimeError("unreachable")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Download paired Weather Lab cyclone CSV or ATCF files.",
+        epilog=(
+            "With no --time or --date, downloads every 00/06/12/18 cycle from "
+            "2022-01-01 through the date 24 hours ago in UTC. With no product "
+            "flag, --both is used. With no format flag, --csv is used. With no "
+            "model flag, --oper is used."
+        ),
+    )
+
+    period = parser.add_mutually_exclusive_group()
+    period.add_argument("--time", type=parse_time, metavar="YYYYMMDDHH")
+    period.add_argument("--date", type=parse_date_prefix, metavar="YYYY[MM[DD]]")
+
+    product = parser.add_mutually_exclusive_group()
+    product.add_argument("--ensemble-mean", "--ensemble_mean", action="store_true")
+    product.add_argument("--ensemble", action="store_true")
+    product.add_argument("--both", action="store_true")
+
+    file_format = parser.add_mutually_exclusive_group()
+    file_format.add_argument(
+        "--csv", action="store_const", const="csv", dest="file_format"
+    )
+    file_format.add_argument(
+        "--atcf", action="store_const", const="atcf", dest="file_format"
+    )
+    parser.set_defaults(file_format="csv")
+
+    model = parser.add_mutually_exclusive_group()
+    model.add_argument("--oper", action="store_const", const="OPER", dest="model")
+    model.add_argument("--v3p2", action="store_const", const="FNV3P2", dest="model")
+    model.add_argument("--v3p1", action="store_const", const="FNV3P1", dest="model")
+    model.add_argument("--v3p0", action="store_const", const="FNV3P0", dest="model")
+    model.add_argument(
+        "--v3p2LE",
+        "--v3p2le",
+        action="store_const",
+        const="FNV3_LARGE_ENSEMBLE",
+        dest="model",
+    )
+    parser.set_defaults(model="OPER")
+
+    parser.add_argument("--timeout", type=float, default=60.0, metavar="SECONDS")
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=2,
+        metavar="N",
+        help="retry each failed download N times (default: 2)",
+    )
+    return parser
+
+
+def selected_products(args: argparse.Namespace) -> list[Product]:
+    output_root = Path.cwd()
+    if args.ensemble_mean:
+        names = ("ensemble_mean",)
+    elif args.ensemble:
+        names = ("ensemble",)
+    else:
+        names = ("ensemble_mean", "ensemble")
+    return [Product(name, output_root / name) for name in names]
+
+
+def selected_forecast_times(args: argparse.Namespace) -> Iterable[datetime]:
+    if args.time is not None:
+        return (args.time,)
+    if args.date is not None:
+        return forecast_times_for_dates(dates_for_prefix(args.date))
+    return default_forecast_times()
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.timeout <= 0:
+        parser.error("--timeout must be greater than zero")
+    if args.retries < 0:
+        parser.error("--retries cannot be negative")
+
+    products = selected_products(args)
+    failures: list[tuple[str, BaseException]] = []
+    downloaded = 0
+    skipped = 0
+
+    for forecast_time in selected_forecast_times(args):
+        for product in products:
+            destination = product.output_dir / filename_for(
+                forecast_time, args.file_format, args.model
+            )
+            url = product.url_for(forecast_time, args.file_format, args.model)
+            try:
+                status = download_file(url, destination, args.timeout, args.retries)
+            except (HTTPError, URLError, TimeoutError, OSError) as error:
+                failures.append((url, error))
+                print(f"FAILED     {url}: {error}", file=sys.stderr, flush=True)
+                continue
+
+            if status == "downloaded":
+                downloaded += 1
+                print(f"DOWNLOADED {url} -> {destination}", flush=True)
+            else:
+                skipped += 1
+                print(f"SKIPPED    {destination} (already exists)", flush=True)
+
+    print(
+        f"Finished: {downloaded} downloaded, {skipped} skipped, {len(failures)} failed.",
+        file=sys.stderr if failures else sys.stdout,
+    )
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
