@@ -6,19 +6,17 @@ CSV and ATCF formats, and the OPER and FNV3 model families.
 
 ## Installation
 
-Install from the project directory:
-
 ```bash
-python -m pip install .
+pip install --upgrade weathernext-download
 ```
 
-For editable development:
+Or from source:
 
 ```bash
-python -m pip install -e .
+git clone https://github.com/CongGao-CG/weathernext-download.git
+cd weathernext-download
+pip install .
 ```
-
-The package has no runtime dependencies outside the Python standard library.
 
 ## Usage
 
@@ -87,4 +85,3 @@ settings.
 ## License
 
 MIT
-
