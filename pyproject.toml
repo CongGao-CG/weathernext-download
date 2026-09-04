@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "weathernext-download"
-version = "0.1.3"
+version = "0.1.4"
 description = "Download cyclone forecasts from Google DeepMind Weather Lab"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -25,6 +25,10 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Atmospheric Science",
 ]
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/CongGao-CG/weathernext-download#readme"
+Repository = "https://github.com/CongGao-CG/weathernext-download"
 
 [project.scripts]
 weathernext-download = "weathernext_download.cli:main"
