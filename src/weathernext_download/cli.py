@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from itertools import chain
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterable, Iterator, TextIO
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -29,6 +29,8 @@ WEIGHT_OUTPUT_DIRECTORY = "weathernext-weight"
 FIRST_DEFAULT_DATE = date(2022, 1, 1)
 FORECAST_HOURS = (0, 6, 12, 18)
 CHUNK_SIZE = 1024 * 1024
+PROGRESS_BAR_WIDTH = 24
+PROGRESS_REFRESH_SECONDS = 0.1
 
 # Inclusive UTC initialization-time boundaries observed in Weather Lab.
 MODEL_COVERAGE: dict[str, tuple[datetime, datetime | None]] = {
@@ -116,6 +118,82 @@ MODEL_WEIGHTS: tuple[ModelWeight, ...] = (
 MODEL_WEIGHTS_BY_ABBREVIATION = {
     weight.abbreviation: weight for weight in MODEL_WEIGHTS
 }
+
+
+class WeightProgressBar:
+    """Render download progress without adding a third-party dependency."""
+
+    def __init__(
+        self,
+        label: str,
+        total_bytes: int,
+        initial_bytes: int = 0,
+        stream: TextIO | None = None,
+    ) -> None:
+        self.label = label
+        self.total_bytes = total_bytes
+        self.initial_bytes = initial_bytes
+        self.current_bytes = initial_bytes
+        self.stream = stream if stream is not None else sys.stderr
+        self.enabled = self.stream.isatty()
+        self.started_at = time_module.monotonic()
+        self.last_rendered_at = 0.0
+        self.last_line_length = 0
+        if self.enabled:
+            self._render(force=True)
+
+    def update(self, byte_count: int) -> None:
+        self.current_bytes += byte_count
+        self._render()
+
+    def finish(self) -> None:
+        if not self.enabled:
+            return
+        self._render(force=True)
+        self.stream.write("\n")
+        self.stream.flush()
+        self.enabled = False
+
+    def stop(self) -> None:
+        """End an incomplete progress line before retry/error output."""
+        if not self.enabled:
+            return
+        self.stream.write("\n")
+        self.stream.flush()
+        self.enabled = False
+
+    def _render(self, force: bool = False) -> None:
+        if not self.enabled:
+            return
+        now = time_module.monotonic()
+        if not force and now - self.last_rendered_at < PROGRESS_REFRESH_SECONDS:
+            return
+        self.last_rendered_at = now
+
+        ratio = min(self.current_bytes / self.total_bytes, 1.0)
+        completed_width = min(
+            int(ratio * PROGRESS_BAR_WIDTH), PROGRESS_BAR_WIDTH
+        )
+        bar = "#" * completed_width + "-" * (
+            PROGRESS_BAR_WIDTH - completed_width
+        )
+
+        elapsed = max(now - self.started_at, 0.001)
+        transferred = max(self.current_bytes - self.initial_bytes, 0)
+        bytes_per_second = transferred / elapsed
+        remaining = max(self.total_bytes - self.current_bytes, 0)
+        eta = remaining / bytes_per_second if bytes_per_second else None
+        eta_text = format_duration(eta) if eta is not None else "--:--"
+
+        line = (
+            f"{self.label:<12} [{bar}] {ratio:6.1%}  "
+            f"{format_size(self.current_bytes)}/{format_size(self.total_bytes)}  "
+            f"{format_rate(bytes_per_second)}  ETA {eta_text}"
+        )
+        padding = " " * max(self.last_line_length - len(line), 0)
+        self.stream.write(f"\r{line}{padding}")
+        self.stream.flush()
+        self.last_line_length = len(line)
 
 
 def filename_for(forecast_time: datetime, file_format: str, model: str) -> str:
@@ -359,6 +437,19 @@ def format_size(size_bytes: int) -> str:
     return f"{size_bytes / (1024 * 1024):.1f} MiB"
 
 
+def format_rate(bytes_per_second: float) -> str:
+    return f"{bytes_per_second / (1024 * 1024):.1f} MiB/s"
+
+
+def format_duration(seconds: float) -> str:
+    total_seconds = max(int(seconds), 0)
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours:d}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes:02d}:{seconds:02d}"
+
+
 def list_model_weights() -> None:
     abbreviation_width = max(
         len("ABBREVIATION"),
@@ -416,6 +507,7 @@ def download_model_weight(
         if existing_size:
             headers["Range"] = f"bytes={existing_size}-"
         request = Request(source_url, headers=headers)
+        progress: WeightProgressBar | None = None
 
         try:
             with urlopen(request, timeout=timeout) as response:
@@ -433,9 +525,16 @@ def download_model_weight(
                 else:
                     raise OSError(f"unexpected HTTP status {status}")
 
+                progress = WeightProgressBar(
+                    weight.abbreviation,
+                    weight.size_bytes,
+                    existing_size if mode == "ab" else 0,
+                )
                 with destination.open(mode) as output:
                     while chunk := response.read(CHUNK_SIZE):
                         output.write(chunk)
+                        progress.update(len(chunk))
+                progress.finish()
 
             downloaded_size = destination.stat().st_size
             if downloaded_size != weight.size_bytes:
@@ -445,6 +544,8 @@ def download_model_weight(
                 )
             return "downloaded"
         except (HTTPError, URLError, TimeoutError, OSError):
+            if progress is not None:
+                progress.stop()
             if attempt == retries:
                 raise
             time_module.sleep(min(2**attempt, 8))

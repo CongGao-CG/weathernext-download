@@ -65,6 +65,8 @@ weathernext-download --weight all --rename
 
 Weights are stored under `./weathernext-weight`. A complete existing file is
 skipped. A smaller partial file is resumed using an HTTP `Range` request.
+During a download, interactive terminals show a progress bar with the
+percentage, transferred size, speed, and estimated time remaining.
 Abbreviations are case-insensitive. Without `--rename`, the original weight
 filename is retained. `--rename` and `--hf` are available only with `--weight`.
 
