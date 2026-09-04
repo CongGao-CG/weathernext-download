@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Download Weather Lab cyclone CSV or ATCF files."""
+"""Download WeatherNext model weights or Weather Lab cyclone products."""
 
 from __future__ import annotations
 
 import argparse
 import calendar
 import os
+import shutil
+import subprocess
 import sys
 import time as time_module
 from dataclasses import dataclass
@@ -14,10 +16,15 @@ from itertools import chain
 from pathlib import Path
 from typing import Iterable, Iterator
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 
 BASE_URL = "https://deepmind.google.com/science/weatherlab/download/cyclones"
+WEIGHT_BASE_URL = (
+    "https://huggingface.co/CONGG/weathernext-weight/resolve/main"
+)
+WEIGHT_OUTPUT_DIRECTORY = "weathernext-weight"
 FIRST_DEFAULT_DATE = date(2022, 1, 1)
 FORECAST_HOURS = (0, 6, 12, 18)
 CHUNK_SIZE = 1024 * 1024
@@ -43,6 +50,62 @@ class Product:
     ) -> str:
         filename = filename_for(forecast_time, file_format, model)
         return f"{BASE_URL}/{model}/{self.name}/paired/{file_format}/{filename}"
+
+
+@dataclass(frozen=True)
+class ModelWeight:
+    abbreviation: str
+    filename: str
+    size_bytes: int
+
+    @property
+    def url(self) -> str:
+        return f"{WEIGHT_BASE_URL}/{quote(self.filename, safe='')}"
+
+
+MODEL_WEIGHTS: tuple[ModelWeight, ...] = (
+    *(
+        ModelWeight(
+            f"wn2-25-m{member}",
+            f"WeatherNext2_<2025_model{member}.npz",
+            735_348_710,
+        )
+        for member in range(1, 5)
+    ),
+    *(
+        ModelWeight(
+            f"wnc-23-m{member}",
+            f"WeatherNextCyclones_<2023_model{member}.npz",
+            735_326_830,
+        )
+        for member in range(1, 5)
+    ),
+    *(
+        ModelWeight(
+            f"wnc-24-m{member}",
+            f"WeatherNextCyclones_<2024_model{member}.npz",
+            735_326_830,
+        )
+        for member in range(1, 5)
+    ),
+    *(
+        ModelWeight(
+            f"wnc-25-m{member}",
+            f"WeatherNextCyclones_<2025_model{member}.npz",
+            735_326_830,
+        )
+        for member in range(1, 5)
+    ),
+    ModelWeight(
+        "wnc-mini-23", "WeatherNextCyclones_Mini_<2023.npz", 226_897_594
+    ),
+    ModelWeight(
+        "wnc-mini-24", "WeatherNextCyclones_Mini_<2024.npz", 226_897_594
+    ),
+)
+MODEL_WEIGHTS_BY_ABBREVIATION = {
+    weight.abbreviation: weight for weight in MODEL_WEIGHTS
+}
 
 
 def filename_for(forecast_time: datetime, file_format: str, model: str) -> str:
@@ -166,14 +229,26 @@ def download_file(url: str, destination: Path, timeout: float, retries: int) -> 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Download paired Weather Lab cyclone CSV or ATCF files.",
-        epilog=(
-            "With no --time or --date, downloads every 00/06/12/18 cycle from "
-            "2022-01-01 through the date 24 hours ago in UTC, restricted to "
-            "the selected model's coverage. With no product flag, --both is "
-            "used. With no format flag, --csv is used. With no model flag, "
-            "--oper is used."
+        description=(
+            "Download WeatherNext weights or paired Weather Lab cyclone files."
         ),
+        epilog=(
+            "Use --cyclone with the cyclone options, or use --weight list, "
+            "--weight ABBREVIATION, or --weight all for pretrained weights."
+        ),
+    )
+
+    action = parser.add_mutually_exclusive_group(required=True)
+    action.add_argument(
+        "--cyclone",
+        action="store_true",
+        help="download Weather Lab cyclone forecast products",
+    )
+    action.add_argument(
+        "--weight",
+        dest="weight_selection",
+        metavar="ABBREVIATION",
+        help="list or download pretrained weights (use 'list' or 'all')",
     )
 
     period = parser.add_mutually_exclusive_group()
@@ -202,22 +277,30 @@ def build_parser() -> argparse.ArgumentParser:
     file_format.add_argument(
         "--atcf", action="store_const", const="atcf", dest="file_format"
     )
-    parser.set_defaults(file_format="csv")
 
     model = parser.add_mutually_exclusive_group()
-    model.add_argument("--oper", action="store_const", const="OPER", dest="model")
-    model.add_argument("--wnv3", action="store_const", const="WNV3", dest="model")
-    model.add_argument("--v3p2", action="store_const", const="FNV3P2", dest="model")
-    model.add_argument("--v3p1", action="store_const", const="FNV3P1", dest="model")
-    model.add_argument("--v3p0", action="store_const", const="FNV3P0", dest="model")
+    model.add_argument(
+        "--oper", action="store_const", const="OPER", dest="cyclone_model"
+    )
+    model.add_argument(
+        "--wnv3", action="store_const", const="WNV3", dest="cyclone_model"
+    )
+    model.add_argument(
+        "--v3p2", action="store_const", const="FNV3P2", dest="cyclone_model"
+    )
+    model.add_argument(
+        "--v3p1", action="store_const", const="FNV3P1", dest="cyclone_model"
+    )
+    model.add_argument(
+        "--v3p0", action="store_const", const="FNV3P0", dest="cyclone_model"
+    )
     model.add_argument(
         "--v3p2LE",
         "--v3p2le",
         action="store_const",
         const="FNV3_LARGE_ENSEMBLE",
-        dest="model",
+        dest="cyclone_model",
     )
-    parser.set_defaults(model="OPER")
 
     parser.add_argument("--timeout", type=float, default=60.0, metavar="SECONDS")
     parser.add_argument(
@@ -249,16 +332,171 @@ def selected_forecast_times(args: argparse.Namespace) -> Iterable[datetime]:
         forecast_times = forecast_times_for_dates(dates)
     else:
         forecast_times = default_forecast_times()
-    return restrict_to_model_coverage(forecast_times, args.model)
+    return restrict_to_model_coverage(forecast_times, args.cyclone_model)
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    if args.timeout <= 0:
-        parser.error("--timeout must be greater than zero")
-    if args.retries < 0:
-        parser.error("--retries cannot be negative")
+def format_size(size_bytes: int) -> str:
+    return f"{size_bytes / (1024 * 1024):.1f} MiB"
+
+
+def list_model_weights() -> None:
+    abbreviation_width = max(
+        len("ABBREVIATION"),
+        *(len(weight.abbreviation) for weight in MODEL_WEIGHTS),
+    )
+    print(f"{'ABBREVIATION':<{abbreviation_width}}  {'SIZE':>9}  FILE")
+    for weight in MODEL_WEIGHTS:
+        print(
+            f"{weight.abbreviation:<{abbreviation_width}}  "
+            f"{format_size(weight.size_bytes):>9}  {weight.filename}"
+        )
+    total_size = sum(weight.size_bytes for weight in MODEL_WEIGHTS)
+    print(
+        f"\n{len(MODEL_WEIGHTS)} models; "
+        f"{total_size / (1024 ** 3):.3f} GiB total"
+    )
+
+
+def download_model_weight(
+    weight: ModelWeight,
+    output_directory: Path,
+    wget_executable: str,
+    timeout: float,
+    retries: int,
+) -> str:
+    """Download or resume one weight with wget."""
+    output_directory.mkdir(parents=True, exist_ok=True)
+    destination = output_directory / weight.filename
+
+    if destination.is_file():
+        existing_size = destination.stat().st_size
+        if existing_size == weight.size_bytes:
+            return "skipped"
+        if existing_size > weight.size_bytes:
+            raise OSError(
+                f"{destination} is larger than the expected "
+                f"{weight.size_bytes} bytes"
+            )
+        print(
+            f"RESUMING   {destination} "
+            f"({format_size(existing_size)} of {format_size(weight.size_bytes)})",
+            flush=True,
+        )
+    elif destination.exists():
+        raise OSError(f"{destination} exists but is not a regular file")
+
+    command = [
+        wget_executable,
+        "--continue",
+        f"--timeout={timeout:g}",
+        f"--tries={retries + 1}",
+        weight.url,
+    ]
+    result = subprocess.run(command, cwd=output_directory, check=False)
+    if result.returncode != 0:
+        raise OSError(
+            f"wget exited with status {result.returncode}; rerun the command "
+            "to resume the partial file"
+        )
+    if not destination.is_file():
+        raise OSError(f"wget finished but did not create {destination}")
+
+    downloaded_size = destination.stat().st_size
+    if downloaded_size != weight.size_bytes:
+        raise OSError(
+            f"{destination} has {downloaded_size} bytes; expected "
+            f"{weight.size_bytes} bytes"
+        )
+    return "downloaded"
+
+
+def cyclone_only_options_selected(args: argparse.Namespace) -> bool:
+    return any(
+        (
+            args.time is not None,
+            args.date is not None,
+            args.ensemble_mean,
+            args.ensemble,
+            args.both,
+            args.file_format is not None,
+            args.cyclone_model is not None,
+        )
+    )
+
+
+def run_weight_command(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> int:
+    if cyclone_only_options_selected(args):
+        parser.error(
+            "cyclone forecast options may only be used together with --cyclone"
+        )
+
+    selection = args.weight_selection.lower()
+    if selection == "list":
+        list_model_weights()
+        return 0
+    if selection == "all":
+        weights = MODEL_WEIGHTS
+    else:
+        try:
+            weights = (MODEL_WEIGHTS_BY_ABBREVIATION[selection],)
+        except KeyError:
+            parser.error(
+                f"unknown weight abbreviation {args.weight_selection!r}; "
+                "use --weight list to see the available weights"
+            )
+
+    wget_executable = shutil.which("wget")
+    if wget_executable is None:
+        parser.error(
+            "wget is required to download model weights; install wget and retry"
+        )
+
+    output_directory = Path.cwd() / WEIGHT_OUTPUT_DIRECTORY
+    failures: list[tuple[ModelWeight, BaseException]] = []
+    downloaded = 0
+    skipped = 0
+    for weight in weights:
+        try:
+            status = download_model_weight(
+                weight,
+                output_directory,
+                wget_executable,
+                args.timeout,
+                args.retries,
+            )
+        except OSError as error:
+            failures.append((weight, error))
+            print(
+                f"FAILED     {weight.abbreviation}: {error}",
+                file=sys.stderr,
+                flush=True,
+            )
+            continue
+
+        destination = output_directory / weight.filename
+        if status == "downloaded":
+            downloaded += 1
+            print(f"DOWNLOADED {weight.url} -> {destination}", flush=True)
+        else:
+            skipped += 1
+            print(f"SKIPPED    {destination} (complete file exists)", flush=True)
+
+    print(
+        f"Finished: {downloaded} downloaded, {skipped} skipped, "
+        f"{len(failures)} failed.",
+        file=sys.stderr if failures else sys.stdout,
+    )
+    return 1 if failures else 0
+
+
+def run_cyclone_command(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> int:
+    args.file_format = args.file_format or "csv"
+    args.cyclone_model = args.cyclone_model or "OPER"
+
 
     products = selected_products(args)
     forecast_times = iter(selected_forecast_times(args))
@@ -267,7 +505,7 @@ def main(argv: list[str] | None = None) -> int:
     except StopIteration:
         parser.error(
             f"the requested time does not overlap current availability and "
-            f"{args.model} model coverage"
+            f"{args.cyclone_model} model coverage"
         )
 
     failures: list[tuple[str, BaseException]] = []
@@ -277,9 +515,11 @@ def main(argv: list[str] | None = None) -> int:
     for forecast_time in chain((first_forecast_time,), forecast_times):
         for product in products:
             destination = product.output_dir / filename_for(
-                forecast_time, args.file_format, args.model
+                forecast_time, args.file_format, args.cyclone_model
             )
-            url = product.url_for(forecast_time, args.file_format, args.model)
+            url = product.url_for(
+                forecast_time, args.file_format, args.cyclone_model
+            )
             try:
                 status = download_file(url, destination, args.timeout, args.retries)
             except (HTTPError, URLError, TimeoutError, OSError) as error:
@@ -299,6 +539,19 @@ def main(argv: list[str] | None = None) -> int:
         file=sys.stderr if failures else sys.stdout,
     )
     return 1 if failures else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.timeout <= 0:
+        parser.error("--timeout must be greater than zero")
+    if args.retries < 0:
+        parser.error("--retries cannot be negative")
+
+    if args.cyclone:
+        return run_cyclone_command(args, parser)
+    return run_weight_command(args, parser)
 
 
 if __name__ == "__main__":

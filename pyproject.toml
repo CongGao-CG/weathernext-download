@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "weathernext-download"
 version = "0.1.4"
-description = "Download cyclone forecasts from Google DeepMind Weather Lab"
+description = "Download WeatherNext cyclone forecasts and model weights"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }

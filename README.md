@@ -1,8 +1,10 @@
 # weathernext-download
 
-`weathernext-download` downloads paired tropical-cyclone forecast files from
-Google DeepMind Weather Lab. It supports ensemble and ensemble-mean products,
-CSV and ATCF formats, and the OPER, WNV3, and FNV3 model families.
+`weathernext-download` downloads pretrained WeatherNext model weights and
+paired tropical-cyclone forecast files. Cyclone products come from Google
+DeepMind Weather Lab; model weights are downloaded from the
+[`CONGG/weathernext-weight`](https://huggingface.co/CONGG/weathernext-weight)
+Hugging Face repository.
 
 ## Installation
 
@@ -18,7 +20,82 @@ cd weathernext-download
 pip install .
 ```
 
-## Available products
+Model-weight downloads require [`wget`](https://www.gnu.org/software/wget/).
+The package has no third-party Python runtime dependencies.
+
+## Model weights
+
+List all 18 available pretrained weights and their abbreviations:
+
+```bash
+weathernext-download --weight list
+```
+
+Download one weight:
+
+```bash
+weathernext-download --weight wnc-25-m1
+```
+
+Download all 18 weights:
+
+```bash
+weathernext-download --weight all
+```
+
+Weights are stored under `./weathernext-weight`. A complete existing file is
+skipped. A smaller partial file is resumed using `wget --continue`.
+Abbreviations are case-insensitive.
+
+The files are downloaded using URLs with this form:
+
+```text
+https://huggingface.co/CONGG/weathernext-weight/resolve/main/<encoded-filename>
+```
+
+For example, `wn2-25-m1` uses:
+
+```text
+https://huggingface.co/CONGG/weathernext-weight/resolve/main/WeatherNext2_%3C2025_model1.npz
+```
+
+### Weight inventory
+
+| Abbreviation | Weight filename | Model | Resolution | Trained through | Size |
+| --- | --- | --- | --- | --- | ---: |
+| `wn2-25-m1` | `WeatherNext2_<2025_model1.npz` | WeatherNext 2, model 1 | 0.25° | 2024 | 701.283 MiB |
+| `wn2-25-m2` | `WeatherNext2_<2025_model2.npz` | WeatherNext 2, model 2 | 0.25° | 2024 | 701.283 MiB |
+| `wn2-25-m3` | `WeatherNext2_<2025_model3.npz` | WeatherNext 2, model 3 | 0.25° | 2024 | 701.283 MiB |
+| `wn2-25-m4` | `WeatherNext2_<2025_model4.npz` | WeatherNext 2, model 4 | 0.25° | 2024 | 701.283 MiB |
+| `wnc-23-m1` | `WeatherNextCyclones_<2023_model1.npz` | WeatherNext Cyclones, model 1 | 0.25° | 2022 | 701.262 MiB |
+| `wnc-23-m2` | `WeatherNextCyclones_<2023_model2.npz` | WeatherNext Cyclones, model 2 | 0.25° | 2022 | 701.262 MiB |
+| `wnc-23-m3` | `WeatherNextCyclones_<2023_model3.npz` | WeatherNext Cyclones, model 3 | 0.25° | 2022 | 701.262 MiB |
+| `wnc-23-m4` | `WeatherNextCyclones_<2023_model4.npz` | WeatherNext Cyclones, model 4 | 0.25° | 2022 | 701.262 MiB |
+| `wnc-24-m1` | `WeatherNextCyclones_<2024_model1.npz` | WeatherNext Cyclones, model 1 | 0.25° | 2023 | 701.262 MiB |
+| `wnc-24-m2` | `WeatherNextCyclones_<2024_model2.npz` | WeatherNext Cyclones, model 2 | 0.25° | 2023 | 701.262 MiB |
+| `wnc-24-m3` | `WeatherNextCyclones_<2024_model3.npz` | WeatherNext Cyclones, model 3 | 0.25° | 2023 | 701.262 MiB |
+| `wnc-24-m4` | `WeatherNextCyclones_<2024_model4.npz` | WeatherNext Cyclones, model 4 | 0.25° | 2023 | 701.262 MiB |
+| `wnc-25-m1` | `WeatherNextCyclones_<2025_model1.npz` | WeatherNext Cyclones/FNV3, model 1 | 0.25° | 2024 | 701.262 MiB |
+| `wnc-25-m2` | `WeatherNextCyclones_<2025_model2.npz` | WeatherNext Cyclones/FNV3, model 2 | 0.25° | 2024 | 701.262 MiB |
+| `wnc-25-m3` | `WeatherNextCyclones_<2025_model3.npz` | WeatherNext Cyclones/FNV3, model 3 | 0.25° | 2024 | 701.262 MiB |
+| `wnc-25-m4` | `WeatherNextCyclones_<2025_model4.npz` | WeatherNext Cyclones/FNV3, model 4 | 0.25° | 2024 | 701.262 MiB |
+| `wnc-mini-23` | `WeatherNextCyclones_Mini_<2023.npz` | WeatherNext Cyclones Mini | 1° | 2022 | 216.386 MiB |
+| `wnc-mini-24` | `WeatherNextCyclones_Mini_<2024.npz` | WeatherNext Cyclones Mini | 1° | 2023 | 216.386 MiB |
+
+The combined download size is 12,219,111,988 bytes, or approximately 11.380
+GiB. The year after `<` identifies the first evaluation year: for example,
+`<2025` was trained on data through 2024.
+
+Models 1–4 are independently initialized and trained checkpoints of the same
+architecture. They are intended to be combined as a deep ensemble; model 4 is
+not newer than model 1. The Mini checkpoints have only one weights file.
+
+The model implementations and original model inventory are maintained in
+Google DeepMind's [WeatherNext repository](https://github.com/google-deepmind/weathernext#provided-pretrained-models).
+The model weights are separate from this package and remain subject to their
+own license and terms.
+
+## Cyclone forecast products
 
 Weather Lab provides experimental cyclone predictions paired with observed
 tracks for verification. Every model below is available as an ensemble mean
@@ -40,31 +117,34 @@ reported as a failed download. See Google's [Weather Lab
 guide](https://developers.google.com/weathernext/guides/weatherlab) for its
 description and terms for experimental cyclone forecast data.
 
-## Usage
+## Cyclone usage
+
+All cyclone-product commands require `--cyclone`. Without it, cyclone options
+are rejected.
 
 Download one forecast cycle:
 
 ```bash
-weathernext-download --time 2026070100 --ensemble_mean
+weathernext-download --cyclone --time 2026070100 --ensemble_mean
 ```
 
 Download both products for all four cycles on one day:
 
 ```bash
-weathernext-download --date 20260701 --both
+weathernext-download --cyclone --date 20260701 --both
 ```
 
 Download a month or year:
 
 ```bash
-weathernext-download --date 202607 --both
-weathernext-download --date 2026 --both
+weathernext-download --cyclone --date 202607 --both
+weathernext-download --cyclone --date 2026 --both
 ```
 
 Download ATCF files from the FNV3P2 model:
 
 ```bash
-weathernext-download --date 20220101 --v3p2 --both --atcf
+weathernext-download --cyclone --date 20220101 --v3p2 --both --atcf
 ```
 
 ### Time selection
@@ -107,7 +187,7 @@ is first written to a temporary file and moved into place only after the
 download completes.
 
 Run `weathernext-download --help` for all options, including timeout and retry
-settings.
+settings. `--timeout` and `--retries` apply to both download modes.
 
 ## License
 

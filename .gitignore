@@ -17,9 +17,9 @@ dist/
 # Downloaded data
 ensemble/
 ensemble_mean/
+weathernext-weight/
 
 # Editors and operating systems
 .DS_Store
 .idea/
 .vscode/
-
