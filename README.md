@@ -20,8 +20,8 @@ cd weathernext-download
 pip install .
 ```
 
-Model-weight downloads require [`wget`](https://www.gnu.org/software/wget/).
-The package has no third-party Python runtime dependencies.
+The package has no third-party Python runtime dependencies. Both cyclone files
+and model weights are downloaded using Python's standard-library `urllib`.
 
 ## Model weights
 
@@ -44,7 +44,7 @@ weathernext-download --weight all
 ```
 
 Weights are stored under `./weathernext-weight`. A complete existing file is
-skipped. A smaller partial file is resumed using `wget --continue`.
+skipped. A smaller partial file is resumed using an HTTP `Range` request.
 Abbreviations are case-insensitive.
 
 The files are downloaded using URLs with this form:

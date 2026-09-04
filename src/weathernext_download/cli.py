@@ -6,8 +6,6 @@ from __future__ import annotations
 import argparse
 import calendar
 import os
-import shutil
-import subprocess
 import sys
 import time as time_module
 from dataclasses import dataclass
@@ -360,54 +358,73 @@ def list_model_weights() -> None:
 def download_model_weight(
     weight: ModelWeight,
     output_directory: Path,
-    wget_executable: str,
     timeout: float,
     retries: int,
 ) -> str:
-    """Download or resume one weight with wget."""
+    """Download or resume one model weight with urllib."""
     output_directory.mkdir(parents=True, exist_ok=True)
     destination = output_directory / weight.filename
 
-    if destination.is_file():
-        existing_size = destination.stat().st_size
-        if existing_size == weight.size_bytes:
-            return "skipped"
-        if existing_size > weight.size_bytes:
-            raise OSError(
-                f"{destination} is larger than the expected "
-                f"{weight.size_bytes} bytes"
-            )
-        print(
-            f"RESUMING   {destination} "
-            f"({format_size(existing_size)} of {format_size(weight.size_bytes)})",
-            flush=True,
-        )
-    elif destination.exists():
-        raise OSError(f"{destination} exists but is not a regular file")
+    for attempt in range(retries + 1):
+        if destination.is_file():
+            existing_size = destination.stat().st_size
+            if existing_size == weight.size_bytes:
+                return "skipped" if attempt == 0 else "downloaded"
+            if existing_size > weight.size_bytes:
+                raise OSError(
+                    f"{destination} is larger than the expected "
+                    f"{weight.size_bytes} bytes"
+                )
+            if attempt == 0 and existing_size > 0:
+                print(
+                    f"RESUMING   {destination} "
+                    f"({format_size(existing_size)} of "
+                    f"{format_size(weight.size_bytes)})",
+                    flush=True,
+                )
+        elif destination.exists():
+            raise OSError(f"{destination} exists but is not a regular file")
+        else:
+            existing_size = 0
 
-    command = [
-        wget_executable,
-        "--continue",
-        f"--timeout={timeout:g}",
-        f"--tries={retries + 1}",
-        weight.url,
-    ]
-    result = subprocess.run(command, cwd=output_directory, check=False)
-    if result.returncode != 0:
-        raise OSError(
-            f"wget exited with status {result.returncode}; rerun the command "
-            "to resume the partial file"
-        )
-    if not destination.is_file():
-        raise OSError(f"wget finished but did not create {destination}")
+        headers = {"User-Agent": "weathernext-download/1.0"}
+        if existing_size:
+            headers["Range"] = f"bytes={existing_size}-"
+        request = Request(weight.url, headers=headers)
 
-    downloaded_size = destination.stat().st_size
-    if downloaded_size != weight.size_bytes:
-        raise OSError(
-            f"{destination} has {downloaded_size} bytes; expected "
-            f"{weight.size_bytes} bytes"
-        )
-    return "downloaded"
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                status = response.getcode()
+                if existing_size and status == 206:
+                    content_range = response.headers.get("Content-Range", "")
+                    if not content_range.startswith(f"bytes {existing_size}-"):
+                        raise OSError(
+                            f"unexpected Content-Range {content_range!r}"
+                        )
+                    mode = "ab"
+                elif status in (200, 206):
+                    # Restart when the server ignores a Range request.
+                    mode = "wb"
+                else:
+                    raise OSError(f"unexpected HTTP status {status}")
+
+                with destination.open(mode) as output:
+                    while chunk := response.read(CHUNK_SIZE):
+                        output.write(chunk)
+
+            downloaded_size = destination.stat().st_size
+            if downloaded_size != weight.size_bytes:
+                raise OSError(
+                    f"{destination} has {downloaded_size} bytes; expected "
+                    f"{weight.size_bytes} bytes"
+                )
+            return "downloaded"
+        except (HTTPError, URLError, TimeoutError, OSError):
+            if attempt == retries:
+                raise
+            time_module.sleep(min(2**attempt, 8))
+
+    raise RuntimeError("unreachable")
 
 
 def cyclone_only_options_selected(args: argparse.Namespace) -> bool:
@@ -447,12 +464,6 @@ def run_weight_command(
                 "use --weight list to see the available weights"
             )
 
-    wget_executable = shutil.which("wget")
-    if wget_executable is None:
-        parser.error(
-            "wget is required to download model weights; install wget and retry"
-        )
-
     output_directory = Path.cwd() / WEIGHT_OUTPUT_DIRECTORY
     failures: list[tuple[ModelWeight, BaseException]] = []
     downloaded = 0
@@ -462,7 +473,6 @@ def run_weight_command(
             status = download_model_weight(
                 weight,
                 output_directory,
-                wget_executable,
                 args.timeout,
                 args.retries,
             )
