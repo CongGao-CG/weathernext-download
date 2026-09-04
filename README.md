@@ -2,9 +2,10 @@
 
 `weathernext-download` downloads pretrained WeatherNext model weights and
 paired tropical-cyclone forecast files. Cyclone products come from Google
-DeepMind Weather Lab; model weights are downloaded from the
+DeepMind Weather Lab. Model weights come from Google's public `dm_graphcast`
+bucket by default, with
 [`CONGG/weathernext-weight`](https://huggingface.co/CONGG/weathernext-weight)
-Hugging Face repository.
+available as an optional Hugging Face mirror.
 
 ## Installation
 
@@ -37,6 +38,12 @@ Download one weight:
 weathernext-download --weight wnc-25-m1
 ```
 
+Use the Hugging Face mirror instead of Google:
+
+```bash
+weathernext-download --weight wnc-25-m1 --hf
+```
+
 Save it using its abbreviation (`wnc-25-m1.npz`) instead of its original
 filename:
 
@@ -59,15 +66,27 @@ weathernext-download --weight all --rename
 Weights are stored under `./weathernext-weight`. A complete existing file is
 skipped. A smaller partial file is resumed using an HTTP `Range` request.
 Abbreviations are case-insensitive. Without `--rename`, the original weight
-filename is retained. `--rename` is available only with `--weight`.
+filename is retained. `--rename` and `--hf` are available only with `--weight`.
 
-The files are downloaded using URLs with this form:
+Without `--hf`, weights are downloaded directly from Google's public bucket:
+
+```text
+https://storage.googleapis.com/dm_graphcast/weathernext2/params/<encoded-filename>
+```
+
+For example, the default URL for `wn2-25-m1` is:
+
+```text
+https://storage.googleapis.com/dm_graphcast/weathernext2/params/WeatherNext2_%3C2025_model1.npz
+```
+
+With `--hf`, the Hugging Face mirror is used:
 
 ```text
 https://huggingface.co/CONGG/weathernext-weight/resolve/main/<encoded-filename>
 ```
 
-For example, `wn2-25-m1` uses:
+For example:
 
 ```text
 https://huggingface.co/CONGG/weathernext-weight/resolve/main/WeatherNext2_%3C2025_model1.npz

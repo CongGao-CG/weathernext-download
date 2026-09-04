@@ -19,7 +19,10 @@ from urllib.request import Request, urlopen
 
 
 BASE_URL = "https://deepmind.google.com/science/weatherlab/download/cyclones"
-WEIGHT_BASE_URL = (
+GOOGLE_WEIGHT_BASE_URL = (
+    "https://storage.googleapis.com/dm_graphcast/weathernext2/params"
+)
+HUGGINGFACE_WEIGHT_BASE_URL = (
     "https://huggingface.co/CONGG/weathernext-weight/resolve/main"
 )
 WEIGHT_OUTPUT_DIRECTORY = "weathernext-weight"
@@ -56,9 +59,13 @@ class ModelWeight:
     filename: str
     size_bytes: int
 
-    @property
-    def url(self) -> str:
-        return f"{WEIGHT_BASE_URL}/{quote(self.filename, safe='')}"
+    def url_for(self, use_huggingface: bool = False) -> str:
+        base_url = (
+            HUGGINGFACE_WEIGHT_BASE_URL
+            if use_huggingface
+            else GOOGLE_WEIGHT_BASE_URL
+        )
+        return f"{base_url}/{quote(self.filename, safe='')}"
 
     def output_filename(self, rename: bool = False) -> str:
         if rename:
@@ -258,6 +265,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="save weight files as ABBREVIATION.npz (only with --weight)",
     )
+    parser.add_argument(
+        "--hf",
+        action="store_true",
+        help="download weights from the Hugging Face mirror instead of Google",
+    )
 
     period = parser.add_mutually_exclusive_group()
     period.add_argument(
@@ -371,10 +383,12 @@ def download_model_weight(
     timeout: float,
     retries: int,
     rename: bool = False,
+    use_huggingface: bool = False,
 ) -> str:
     """Download or resume one model weight with urllib."""
     output_directory.mkdir(parents=True, exist_ok=True)
     destination = output_directory / weight.output_filename(rename)
+    source_url = weight.url_for(use_huggingface)
 
     for attempt in range(retries + 1):
         if destination.is_file():
@@ -401,7 +415,7 @@ def download_model_weight(
         headers = {"User-Agent": "weathernext-download/1.0"}
         if existing_size:
             headers["Range"] = f"bytes={existing_size}-"
-        request = Request(weight.url, headers=headers)
+        request = Request(source_url, headers=headers)
 
         try:
             with urlopen(request, timeout=timeout) as response:
@@ -487,6 +501,7 @@ def run_weight_command(
                 args.timeout,
                 args.retries,
                 args.rename,
+                args.hf,
             )
         except OSError as error:
             failures.append((weight, error))
@@ -500,7 +515,10 @@ def run_weight_command(
         destination = output_directory / weight.output_filename(args.rename)
         if status == "downloaded":
             downloaded += 1
-            print(f"DOWNLOADED {weight.url} -> {destination}", flush=True)
+            print(
+                f"DOWNLOADED {weight.url_for(args.hf)} -> {destination}",
+                flush=True,
+            )
         else:
             skipped += 1
             print(f"SKIPPED    {destination} (complete file exists)", flush=True)
@@ -518,6 +536,8 @@ def run_cyclone_command(
 ) -> int:
     if args.rename:
         parser.error("--rename may only be used together with --weight")
+    if args.hf:
+        parser.error("--hf may only be used together with --weight")
     args.file_format = args.file_format or "csv"
     args.cyclone_model = args.cyclone_model or "OPER"
 
