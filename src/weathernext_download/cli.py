@@ -60,6 +60,11 @@ class ModelWeight:
     def url(self) -> str:
         return f"{WEIGHT_BASE_URL}/{quote(self.filename, safe='')}"
 
+    def output_filename(self, rename: bool = False) -> str:
+        if rename:
+            return f"{self.abbreviation}.npz"
+        return self.filename
+
 
 MODEL_WEIGHTS: tuple[ModelWeight, ...] = (
     *(
@@ -248,6 +253,11 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="ABBREVIATION",
         help="list or download pretrained weights (use 'list' or 'all')",
     )
+    parser.add_argument(
+        "--rename",
+        action="store_true",
+        help="save weight files as ABBREVIATION.npz (only with --weight)",
+    )
 
     period = parser.add_mutually_exclusive_group()
     period.add_argument(
@@ -360,10 +370,11 @@ def download_model_weight(
     output_directory: Path,
     timeout: float,
     retries: int,
+    rename: bool = False,
 ) -> str:
     """Download or resume one model weight with urllib."""
     output_directory.mkdir(parents=True, exist_ok=True)
-    destination = output_directory / weight.filename
+    destination = output_directory / weight.output_filename(rename)
 
     for attempt in range(retries + 1):
         if destination.is_file():
@@ -475,6 +486,7 @@ def run_weight_command(
                 output_directory,
                 args.timeout,
                 args.retries,
+                args.rename,
             )
         except OSError as error:
             failures.append((weight, error))
@@ -485,7 +497,7 @@ def run_weight_command(
             )
             continue
 
-        destination = output_directory / weight.filename
+        destination = output_directory / weight.output_filename(args.rename)
         if status == "downloaded":
             downloaded += 1
             print(f"DOWNLOADED {weight.url} -> {destination}", flush=True)
@@ -504,6 +516,8 @@ def run_weight_command(
 def run_cyclone_command(
     args: argparse.Namespace, parser: argparse.ArgumentParser
 ) -> int:
+    if args.rename:
+        parser.error("--rename may only be used together with --weight")
     args.file_format = args.file_format or "csv"
     args.cyclone_model = args.cyclone_model or "OPER"
 

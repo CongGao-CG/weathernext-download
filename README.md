@@ -37,15 +37,29 @@ Download one weight:
 weathernext-download --weight wnc-25-m1
 ```
 
+Save it using its abbreviation (`wnc-25-m1.npz`) instead of its original
+filename:
+
+```bash
+weathernext-download --weight wnc-25-m1 --rename
+```
+
 Download all 18 weights:
 
 ```bash
 weathernext-download --weight all
 ```
 
+Add `--rename` to save all 18 files as their abbreviations:
+
+```bash
+weathernext-download --weight all --rename
+```
+
 Weights are stored under `./weathernext-weight`. A complete existing file is
 skipped. A smaller partial file is resumed using an HTTP `Range` request.
-Abbreviations are case-insensitive.
+Abbreviations are case-insensitive. Without `--rename`, the original weight
+filename is retained. `--rename` is available only with `--weight`.
 
 The files are downloaded using URLs with this form:
 
