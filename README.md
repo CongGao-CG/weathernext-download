@@ -136,6 +136,11 @@ variable is not used in that role.
 
 ![WeatherNext model inputs and outputs](https://raw.githubusercontent.com/CongGao-CG/weathernext-download/main/docs/model-input-output.svg)
 
+During autoregressive forecasting, predicted atmospheric and surface fields
+are fed back as inputs for the next time step. Static surface fields are
+reused, time forcings are advanced, and output-only precipitation and cyclone
+fields are not fed back.
+
 | No. | Category | Variable | Input | Output |
 | ---: | --- | --- | --- | --- |
 | 1 | Pressure level | `temperature` | ✓ | ✓ |
