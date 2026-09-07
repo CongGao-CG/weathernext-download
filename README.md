@@ -126,6 +126,70 @@ Models 1–4 are independently initialized and trained checkpoints of the same
 architecture. They are intended to be combined as a deep ensemble; model 4 is
 not newer than model 1. The Mini checkpoints have only one weights file.
 
+### Model input and output variables
+
+The weights above cover three model configurations: `WeatherNextCyclones`,
+`WeatherNextCyclones_Mini`, and `WeatherNext2`. These are model tensor
+variables used when running the downloaded weights; they are distinct from the
+columns in the paired Weather Lab track files described below. A ✓ applies to
+all three configurations, **WN2 only** applies only to `WeatherNext2`, and —
+means the variable is not used in that role.
+
+| Category | Variable | Input | Output |
+| --- | --- | --- | --- |
+| Pressure level | `temperature` | ✓ | ✓ |
+| Pressure level | `geopotential` | ✓ | ✓ |
+| Pressure level | `u_component_of_wind` | ✓ | ✓ |
+| Pressure level | `v_component_of_wind` | ✓ | ✓ |
+| Pressure level | `vertical_velocity` | ✓ | ✓ |
+| Pressure level | `specific_humidity` | ✓ | ✓ |
+| Surface / near-surface | `2m_temperature` | ✓ | ✓ |
+| Surface / near-surface | `mean_sea_level_pressure` | ✓ | ✓ |
+| Surface / near-surface | `10m_u_component_of_wind` | ✓ | ✓ |
+| Surface / near-surface | `10m_v_component_of_wind` | ✓ | ✓ |
+| Surface / near-surface | `sea_surface_temperature` | ✓ | ✓ |
+| Surface / near-surface | `100m_u_component_of_wind` | **WN2 only** | **WN2 only** |
+| Surface / near-surface | `100m_v_component_of_wind` | **WN2 only** | **WN2 only** |
+| Surface accumulation | `total_precipitation_6hr` | — | ✓ |
+| Static surface | `geopotential_at_surface` | ✓ | — |
+| Static surface | `land_sea_mask` | ✓ | — |
+| Time forcing | `year_progress_sin` | ✓ | — |
+| Time forcing | `year_progress_cos` | ✓ | — |
+| Time forcing | `day_progress_sin` | ✓ | — |
+| Time forcing | `day_progress_cos` | ✓ | — |
+
+Each pressure-level variable spans these 13 pressure levels, in hPa:
+
+```text
+50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000
+```
+
+Surface and near-surface variables have no pressure-level dimension. Heights
+such as 2 m, 10 m, and 100 m denote height above the surface.
+
+Cyclone outputs are separate spatial fields, also without a pressure-level
+dimension. All three model configurations predict them; none use them as
+configured inputs.
+
+| Cyclone quantity | Output variable(s) | Count |
+| --- | --- | ---: |
+| Existence | `cyclone_exists_gaussian_unit_mode` | 1 |
+| Wind intensity | `cyclone_all_wind_disc`, `cyclone_usa_wind_disc` | 2 |
+| 34-knot wind radii | `cyclone_usa_r34_{ne,se,sw,nw}_radius_disc` | 4 |
+| 50-knot wind radii | `cyclone_usa_r50_{ne,se,sw,nw}_radius_disc` | 4 |
+| 64-knot wind radii | `cyclone_usa_r64_{ne,se,sw,nw}_radius_disc` | 4 |
+| Radius of maximum wind | `cyclone_usa_rmw_disc` | 1 |
+| Central pressure | `cyclone_usa_pres_disc` | 1 |
+
+The brace notation represents four separate quadrant variables: northeast,
+southeast, southwest, and northwest.
+
+| Model configuration | Pressure-level outputs | Surface weather outputs | Cyclone outputs |
+| --- | ---: | ---: | ---: |
+| `WeatherNextCyclones` | 6 × 13 = 78 fields | 6 | 17 |
+| `WeatherNextCyclones_Mini` | 6 × 13 = 78 fields | 6 | 17 |
+| `WeatherNext2` | 6 × 13 = 78 fields | 8 | 17 |
+
 The model implementations and original model inventory are maintained in
 Google DeepMind's [WeatherNext repository](https://github.com/google-deepmind/weathernext#provided-pretrained-models).
 The model weights are separate from this package and remain subject to their
