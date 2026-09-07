@@ -1,9 +1,10 @@
 # weathernext-download
 
 `weathernext-download` downloads pretrained WeatherNext model weights and
-paired tropical-cyclone forecast files. Cyclone products come from Google
-DeepMind Weather Lab. Model weights come from Google's public `dm_graphcast`
-bucket by default, with
+[paired tropical-cyclone forecast files](https://deepmind.google.com/science/weatherlab).
+Cyclone products come from Google DeepMind Weather Lab. Model weights come from
+[Google's public `dm_graphcast` bucket](https://console.cloud.google.com/storage/browser/dm_graphcast/weathernext2/params?pageState=%28%22StorageObjectListTable%22:%28%22f%22:%22%255B%255D%22%29%29)
+by default, with
 [`CONGG/weathernext-weight`](https://huggingface.co/CONGG/weathernext-weight)
 available as an optional Hugging Face mirror.
 
