@@ -318,7 +318,7 @@ def download_file(url: str, destination: Path, timeout: float, retries: int) -> 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Download WeatherNext weights or paired Weather Lab cyclone files."
+            "Download WeatherNext weights, gridded forecasts, or paired cyclone files."
         ),
         epilog=(
             "Use --cyclone with the cyclone options, or use --weight list, "
@@ -327,6 +327,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     action = parser.add_mutually_exclusive_group(required=True)
+    action.add_argument("--gridded", action="store_true", help="download WeatherNext 2 ensemble-mean gridded forecasts as Zarr")
+    from .gridded import parse_years, parse_variables
+    parser.add_argument("--year", type=parse_years, help="gridded years: 2022,2023,2024 (default: all three)")
+    parser.add_argument("--var", dest="variables", type=parse_variables, help="required with --gridded; comma-separated variables such as sst,msl,z300")
+    parser.add_argument("--output-dir", help="gridded output directory (default: ./gridded)")
     action.add_argument(
         "--cyclone",
         action="store_true",
@@ -693,6 +698,16 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--timeout must be greater than zero")
     if args.retries < 0:
         parser.error("--retries cannot be negative")
+
+    if args.gridded:
+        if not args.variables:
+            parser.error("--gridded requires --var")
+        if cyclone_only_options_selected(args) or args.hf or args.rename:
+            parser.error("cyclone and weight options cannot be used with --gridded")
+        from .gridded import run
+        return run(args)
+    if args.year is not None or args.variables is not None or args.output_dir is not None:
+        parser.error("--year, --var and --output-dir require --gridded")
 
     if args.cyclone:
         return run_cyclone_command(args, parser)

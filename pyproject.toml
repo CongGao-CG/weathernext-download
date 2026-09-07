@@ -26,6 +26,9 @@ classifiers = [
 ]
 dependencies = []
 
+[project.optional-dependencies]
+gridded = ["xarray", "dask[array]", "zarr", "gcsfs"]
+
 [project.urls]
 Homepage = "https://github.com/CongGao-CG/weathernext-download#readme"
 Repository = "https://github.com/CongGao-CG/weathernext-download"
