@@ -130,33 +130,32 @@ not newer than model 1. The Mini checkpoints have only one weights file.
 
 The weights above cover three model configurations: `WeatherNextCyclones`,
 `WeatherNextCyclones_Mini`, and `WeatherNext2`. These are model tensor
-variables used when running the downloaded weights; they are distinct from the
-columns in the paired Weather Lab track files described below. A ✓ applies to
-all three configurations, **WN2 only** applies only to `WeatherNext2`, and —
-means the variable is not used in that role.
+variables used when running the downloaded weights. A ✓ applies to all three
+configurations, **WN2 only** applies only to `WeatherNext2`, and — means the
+variable is not used in that role.
 
-| Category | Variable | Input | Output |
-| --- | --- | --- | --- |
-| Pressure level | `temperature` | ✓ | ✓ |
-| Pressure level | `geopotential` | ✓ | ✓ |
-| Pressure level | `u_component_of_wind` | ✓ | ✓ |
-| Pressure level | `v_component_of_wind` | ✓ | ✓ |
-| Pressure level | `vertical_velocity` | ✓ | ✓ |
-| Pressure level | `specific_humidity` | ✓ | ✓ |
-| Surface / near-surface | `2m_temperature` | ✓ | ✓ |
-| Surface / near-surface | `mean_sea_level_pressure` | ✓ | ✓ |
-| Surface / near-surface | `10m_u_component_of_wind` | ✓ | ✓ |
-| Surface / near-surface | `10m_v_component_of_wind` | ✓ | ✓ |
-| Surface / near-surface | `sea_surface_temperature` | ✓ | ✓ |
-| Surface / near-surface | `100m_u_component_of_wind` | **WN2 only** | **WN2 only** |
-| Surface / near-surface | `100m_v_component_of_wind` | **WN2 only** | **WN2 only** |
-| Surface accumulation | `total_precipitation_6hr` | — | ✓ |
-| Static surface | `geopotential_at_surface` | ✓ | — |
-| Static surface | `land_sea_mask` | ✓ | — |
-| Time forcing | `year_progress_sin` | ✓ | — |
-| Time forcing | `year_progress_cos` | ✓ | — |
-| Time forcing | `day_progress_sin` | ✓ | — |
-| Time forcing | `day_progress_cos` | ✓ | — |
+| No. | Category | Variable | Input | Output |
+| ---: | --- | --- | --- | --- |
+| 1 | Pressure level | `temperature` | ✓ | ✓ |
+| 2 | Pressure level | `geopotential` | ✓ | ✓ |
+| 3 | Pressure level | `u_component_of_wind` | ✓ | ✓ |
+| 4 | Pressure level | `v_component_of_wind` | ✓ | ✓ |
+| 5 | Pressure level | `vertical_velocity` | ✓ | ✓ |
+| 6 | Pressure level | `specific_humidity` | ✓ | ✓ |
+| 7 | Surface / near-surface | `2m_temperature` | ✓ | ✓ |
+| 8 | Surface / near-surface | `mean_sea_level_pressure` | ✓ | ✓ |
+| 9 | Surface / near-surface | `10m_u_component_of_wind` | ✓ | ✓ |
+| 10 | Surface / near-surface | `10m_v_component_of_wind` | ✓ | ✓ |
+| 11 | Surface / near-surface | `sea_surface_temperature` | ✓ | ✓ |
+| 12 | Surface / near-surface | `100m_u_component_of_wind` | **WN2 only** | **WN2 only** |
+| 13 | Surface / near-surface | `100m_v_component_of_wind` | **WN2 only** | **WN2 only** |
+| 14 | Surface accumulation | `total_precipitation_6hr` | — | ✓ |
+| 15 | Static surface | `geopotential_at_surface` | ✓ | — |
+| 16 | Static surface | `land_sea_mask` | ✓ | — |
+| 17 | Time forcing | `year_progress_sin` | ✓ | — |
+| 18 | Time forcing | `year_progress_cos` | ✓ | — |
+| 19 | Time forcing | `day_progress_sin` | ✓ | — |
+| 20 | Time forcing | `day_progress_cos` | ✓ | — |
 
 Each pressure-level variable spans these 13 pressure levels, in hPa:
 
@@ -184,11 +183,11 @@ configured inputs.
 The brace notation represents four separate quadrant variables: northeast,
 southeast, southwest, and northwest.
 
-| Model configuration | Pressure-level outputs | Surface weather outputs | Cyclone outputs |
+| Model configuration | Pressure-level variables | Surface weather outputs | Cyclone outputs |
 | --- | ---: | ---: | ---: |
-| `WeatherNextCyclones` | 6 × 13 = 78 fields | 6 | 17 |
-| `WeatherNextCyclones_Mini` | 6 × 13 = 78 fields | 6 | 17 |
-| `WeatherNext2` | 6 × 13 = 78 fields | 8 | 17 |
+| `WeatherNextCyclones` | 6 (13 levels) | 6 | 17 |
+| `WeatherNextCyclones_Mini` | 6 (13 levels) | 6 | 17 |
+| `WeatherNext2` | 6 (13 levels) | 8 | 17 |
 
 The model implementations and original model inventory are maintained in
 Google DeepMind's [WeatherNext repository](https://github.com/google-deepmind/weathernext#provided-pretrained-models).
