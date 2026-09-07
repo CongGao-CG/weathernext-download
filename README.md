@@ -134,6 +134,8 @@ variables used when running the downloaded weights. A ✓ applies to all three
 configurations, **WN2 only** applies only to `WeatherNext2`, and — means the
 variable is not used in that role.
 
+![WeatherNext model inputs and outputs](https://raw.githubusercontent.com/CongGao-CG/weathernext-download/main/docs/model-input-output.svg)
+
 | No. | Category | Variable | Input | Output |
 | ---: | --- | --- | --- | --- |
 | 1 | Pressure level | `temperature` | ✓ | ✓ |
