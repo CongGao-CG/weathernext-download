@@ -70,14 +70,15 @@ def run(args):
         print("Missing libraries for --gridded. See the README's Gridded forecasts requirements.", file=sys.stderr)
         return 1
 
-    output = Path(args.output_dir or "./gridded")
-    output.mkdir(parents=True, exist_ok=True)
+    output = Path(args.output_dir or ".")
     failures = downloaded = skipped = 0
     for year in args.year or (2022, 2023, 2024):
         period = f"{year}_to_{year + 1}"
         pending = []
         for alias in args.variables:
-            destination = output / f"{alias}_{period}.zarr"
+            var_dir = output / f"{alias}_zarr"
+            var_dir.mkdir(parents=True, exist_ok=True)
+            destination = var_dir / f"{period}.zarr"
             if destination.exists():
                 print(f"SKIPPED    {destination} (already exists)")
                 skipped += 1

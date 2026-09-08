@@ -331,7 +331,7 @@ def build_parser() -> argparse.ArgumentParser:
     from .gridded import parse_years, parse_variables
     parser.add_argument("--year", type=parse_years, help="gridded years: 2022,2023,2024 (default: all three)")
     parser.add_argument("--var", dest="variables", type=parse_variables, help="required with --gridded; comma-separated variables such as sst,msl,z300")
-    parser.add_argument("--output-dir", help="gridded output directory (default: ./gridded)")
+    parser.add_argument("--output-dir", help="root directory for <var>_zarr output directories (default: current directory)")
     action.add_argument(
         "--cyclone",
         action="store_true",
