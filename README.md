@@ -266,7 +266,7 @@ For example, `z300` is valid but `z` is not. Levels are selected by coordinate
 value, not array index. No unit conversion is performed.
 
 Each variable is saved under its own `<var>_zarr` directory, with one Zarr
-store per period inside it, such as `./sst_zarr/2022_to_2023.zarr`. Use
+store per period inside it, such as `./sst_zarr/sst_2022_to_2023.zarr`. Use
 `--output-dir` to change the root that `<var>_zarr` directories are created
 under. All times, forecast steps, and grid points in the chosen stores are retained.
 Pressure-level output variables are named, for example, `geopotential_300hPa`.
@@ -284,11 +284,11 @@ the `2022_to_2023` dataset using the standalone reference scripts:
 
 | Variable | Zarr directory | Reported disk usage |
 | --- | --- | ---: |
-| Sea surface temperature (`sst`) | `sst_zarr/2022_to_2023.zarr` | 154 GiB |
-| Eastward wind at 10 m (`u10`) | `u10_zarr/2022_to_2023.zarr` | 310 GiB |
-| Northward wind at 10 m (`v10`) | `v10_zarr/2022_to_2023.zarr` | 313 GiB |
-| Geopotential at 300 hPa (`z300`) | `z300_zarr/2022_to_2023.zarr` | 247 GiB |
-| Mean sea-level pressure (`msl`) | `msl_zarr/2022_to_2023.zarr` | 245 GiB |
+| Sea surface temperature (`sst`) | `sst_zarr/sst_2022_to_2023.zarr` | 154 GiB |
+| Eastward wind at 10 m (`u10`) | `u10_zarr/u10_2022_to_2023.zarr` | 310 GiB |
+| Northward wind at 10 m (`v10`) | `v10_zarr/v10_2022_to_2023.zarr` | 313 GiB |
+| Geopotential at 300 hPa (`z300`) | `z300_zarr/z300_2022_to_2023.zarr` | 247 GiB |
+| Mean sea-level pressure (`msl`) | `msl_zarr/msl_2022_to_2023.zarr` | 245 GiB |
 
 ## Cyclone forecast products
 

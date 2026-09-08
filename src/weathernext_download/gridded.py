@@ -97,7 +97,7 @@ def run(args):
         for alias in args.variables:
             var_dir = output / f"{alias}_zarr"
             var_dir.mkdir(parents=True, exist_ok=True)
-            destination = var_dir / f"{period}.zarr"
+            destination = var_dir / f"{alias}_{period}.zarr"
             if destination.exists():
                 print(f"SKIPPED    {destination} (already exists)")
                 skipped += 1

@@ -168,12 +168,12 @@ class RunLayoutTests(unittest.TestCase):
             result = gridded.run(args)
 
         self.assertEqual(result, 0)
-        self.assertTrue((tmp_dir / "sst_zarr" / "2022_to_2023.zarr").is_dir())
-        self.assertTrue((tmp_dir / "msl_zarr" / "2022_to_2023.zarr").is_dir())
+        self.assertTrue((tmp_dir / "sst_zarr" / "sst_2022_to_2023.zarr").is_dir())
+        self.assertTrue((tmp_dir / "msl_zarr" / "msl_2022_to_2023.zarr").is_dir())
 
     def test_skips_existing_destination_without_opening_the_source(self):
         tmp_dir = self._make_temp_dir()
-        existing = tmp_dir / "sst_zarr" / "2022_to_2023.zarr"
+        existing = tmp_dir / "sst_zarr" / "sst_2022_to_2023.zarr"
         existing.mkdir(parents=True)
         args = argparse.Namespace(output_dir=str(tmp_dir), year=(2022,), variables=("sst",))
 
