@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download WeatherNext model weights or Weather Lab cyclone products."""
+"""Download WeatherNext model weights, gridded forecasts, or Weather Lab cyclone products."""
 
 from __future__ import annotations
 
@@ -294,7 +294,7 @@ def download_file(url: str, destination: Path, timeout: float, retries: int) -> 
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(f".{destination.name}.{os.getpid()}.part")
-    request = Request(url, headers={"User-Agent": "weathernext-downloader/1.0"})
+    request = Request(url, headers={"User-Agent": "weathernext-download/1.0"})
 
     try:
         for attempt in range(retries + 1):
