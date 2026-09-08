@@ -1,6 +1,7 @@
 """Extract selected WeatherNext 2 ensemble-mean fields into local Zarr stores."""
 
 import argparse
+import importlib
 from pathlib import Path
 import re
 import sys
@@ -60,15 +61,31 @@ def select_variable(dataset, alias):
     return selected
 
 
+GRIDDED_REQUIREMENTS = (
+    ("xarray", "xarray"),
+    ("dask.diagnostics", "dask[array]"),
+    ("zarr", "zarr"),
+    ("gcsfs", "gcsfs"),
+)
+
+
 def run(args):
-    try:
-        import xarray as xr
-        import gcsfs  # noqa: F401
-        import zarr  # noqa: F401
-        from dask.diagnostics import ProgressBar
-    except ImportError:
-        print("Missing libraries for --gridded. See the README's Gridded forecasts requirements.", file=sys.stderr)
+    missing = []
+    for module_name, package_name in GRIDDED_REQUIREMENTS:
+        try:
+            importlib.import_module(module_name)
+        except ImportError:
+            missing.append(package_name)
+    if missing:
+        print(
+            f"Missing libraries for --gridded: {', '.join(missing)}. "
+            f"Install with: pip install {' '.join(missing)}",
+            file=sys.stderr,
+        )
         return 1
+
+    import xarray as xr
+    from dask.diagnostics import ProgressBar
 
     output = Path(args.output_dir or ".")
     failures = downloaded = skipped = 0
