@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "weathernext-download"
+abstract: "Download WeatherNext model weights, gridded forecasts, and cyclone forecasts."
+authors:
+  - family-names: "Gao"
+    given-names: "Cong"
+    email: "cnggao@gmail.com"
+license: "MIT"
+repository-code: "https://github.com/CongGao-CG/weathernext-download"
+repository-artifact: "https://pypi.org/project/weathernext-download/"
+url: "https://github.com/CongGao-CG/weathernext-download#readme"
+keywords:
+  - weather
+  - cyclone
+  - forecast
+  - weatherlab
+  - deepmind
+  - python-package
