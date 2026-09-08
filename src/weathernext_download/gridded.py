@@ -4,6 +4,7 @@ import argparse
 import importlib
 from pathlib import Path
 import re
+import shlex
 import sys
 
 LEVELS = (50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000)
@@ -77,9 +78,10 @@ def run(args):
         except ImportError:
             missing.append(package_name)
     if missing:
+        install_args = " ".join(shlex.quote(package) for package in missing)
         print(
             f"Missing libraries for --gridded: {', '.join(missing)}. "
-            f"Install with: pip install {' '.join(missing)}",
+            f"Install with: pip install {install_args}",
             file=sys.stderr,
         )
         return 1
