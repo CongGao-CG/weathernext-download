@@ -1,11 +1,14 @@
 # weathernext-download
 
-`weathernext-download` downloads pretrained WeatherNext model weights and
-paired tropical-cyclone forecast files. Model weights come from
+`weathernext-download` downloads pretrained WeatherNext model weights,
+gridded WeatherNext 2 ensemble-mean forecasts, and paired tropical-cyclone
+forecast files. Model weights come from
 [Google's public `dm_graphcast` bucket](https://console.cloud.google.com/storage/browser/dm_graphcast/weathernext2/params?pageState=%28%22StorageObjectListTable%22:%28%22f%22:%22%255B%255D%22%29%29)
 by default, with
 [`CONGG/weathernext-weight`](https://huggingface.co/CONGG/weathernext-weight)
-available as an optional Hugging Face mirror. Cyclone products come from
+available as an optional Hugging Face mirror. Gridded forecasts come from
+Google's [WeatherNext 2 model guide](https://developers.google.com/weathernext/guides/models-wn2).
+Cyclone products come from
 [Google DeepMind Weather Lab](https://deepmind.google.com/science/weatherlab).
 
 ## Installation
@@ -24,69 +27,6 @@ pip install .
 
 The base package has no third-party Python runtime dependencies. Both cyclone files
 and model weights are downloaded using Python's standard-library `urllib`.
-
-## Gridded forecasts
-
-Install the optional dependencies for Zarr downloads:
-
-```bash
-pip install --upgrade "weathernext-download[gridded]"
-```
-
-WeatherNext 2 provides experimental global medium-range ensemble forecasts
-at 0.25° resolution, initialized at 00, 06, 12, and 18 UTC, with six-hour
-forecast steps out to 15 days. See Google's [WeatherNext 2 dataset description](https://developers.google.com/earth-engine/datasets/catalog/projects_gcp-public-data-weathernext_assets_weathernext_2_0_0).
-This command extracts **ensemble-mean** fields from the same GCS stores used
-by the former standalone download scripts, not individual ensemble members:
-
-```text
-gs://weathernext/weathernext_2_0_0_mean/zarr/<year>_to_<next-year>/predictions.zarr
-```
-
-Google may require approved dataset access and locally configured Google Cloud
-credentials. The catalog's general availability does not extend this command's
-three supported historical periods.
-
-```bash
-weathernext-download --gridded --year 2022 --var sst
-weathernext-download --gridded --year 2022,2023 --var sst,msl
-weathernext-download --gridded --var z300,z500,u10,v10
-```
-
-`--var` is required. `--year 2022` selects `2022_to_2023`, and
-`--year 2022,2023` selects that period plus `2023_to_2024`. Omitting `--year`
-selects all three periods: `2022_to_2023`, `2023_to_2024`, and `2024_to_2025`.
-Only starting years 2022, 2023, and 2024 are supported.
-
-| Selection | Source variable | Meaning |
-| --- | --- | --- |
-| `sst` | `sea_surface_temperature` | Sea surface temperature |
-| `msl` | `mean_sea_level_pressure` | Mean sea-level pressure |
-| `t2m` | `2m_temperature` | Temperature at 2 m |
-| `u10` | `10m_u_component_of_wind` | Eastward wind at 10 m |
-| `v10` | `10m_v_component_of_wind` | Northward wind at 10 m |
-| `tp` | `total_precipitation_6hr` | Six-hour accumulated precipitation |
-| `z<level>` | `geopotential` | Geopotential |
-| `q<level>` | `specific_humidity` | Specific humidity |
-| `t<level>` | `temperature` | Temperature |
-| `u<level>` | `u_component_of_wind` | Eastward wind |
-| `v<level>` | `v_component_of_wind` | Northward wind |
-| `w<level>` | `vertical_velocity` | Vertical velocity |
-
-Pressure-level variables require a level suffix in hPa: `50`, `100`, `150`,
-`200`, `250`, `300`, `400`, `500`, `600`, `700`, `850`, `925`, or `1000`.
-For example, `z300` is valid but `z` is not. Levels are selected by coordinate
-value, not array index. No unit conversion is performed.
-
-Each variable and period is saved as a separate Zarr directory, such as
-`./gridded/sst_2022_to_2023.zarr`. Use `--output-dir` to change the root.
-All times, forecast steps, and grid points in the chosen stores are retained.
-Pressure-level output variables are named, for example, `geopotential_300hPa`.
-Existing destinations are skipped. Writes first use a `.zarr.part` directory;
-failed partial outputs are retained and must be moved aside before retrying.
-This mode does not resume partial downloads or provide NetCDF output.
-Failures produce a nonzero exit status. A Dask progress bar displays writing
-progress. `--timeout` and `--retries` configure cyclone/weight downloads only.
 
 ## Model weights
 
@@ -263,6 +203,91 @@ The model implementations and original model inventory are maintained in
 Google DeepMind's [WeatherNext repository](https://github.com/google-deepmind/weathernext#provided-pretrained-models).
 The model weights are separate from this package and remain subject to their
 own license and terms.
+
+## Gridded forecasts (ensemble mean)
+
+`--gridded` downloads **WeatherNext 2 ensemble-mean forecasts only**, saved
+as Zarr. These fields are averages across **64 ensemble members**; this mode does
+not download individual members. No additional ensemble-selection flag is
+needed.
+
+Using `--gridded` requires `xarray`, `dask` (with array support), `zarr`, and
+`gcsfs` in your Python environment. These libraries are not installed by this
+package and must be provided separately. Cyclone and weight downloads do not
+require them.
+
+WeatherNext 2 provides experimental global medium-range ensemble forecasts
+at 0.25° resolution, initialized at 00, 06, 12, and 18 UTC, with six-hour
+forecast steps out to 15 days. See Google's [WeatherNext 2 model guide](https://developers.google.com/weathernext/guides/models-wn2).
+The ensemble-mean source is:
+
+```text
+gs://weathernext/weathernext_2_0_0_mean/zarr/<year>_to_<next-year>/predictions.zarr
+```
+
+Downloading these gridded data requires a Google account approved for
+WeatherNext data access. If your account has not been approved, complete the
+[WeatherNext Data Request form](https://docs.google.com/forms/d/e/1FAIpQLSeCf1JY8G78UDWzbm0ly9kJxfSjUIJT5WyMR_HiNqCm-IHIBg/viewform)
+and wait for Google's approval. Configure your local Google Cloud credentials
+using the approved account before running `--gridded`.
+`--gridded` supports only the `2022_to_2023`, `2023_to_2024`, and
+`2024_to_2025` datasets, selected with `--year 2022`, `--year 2023`, and
+`--year 2024`, respectively.
+
+```bash
+weathernext-download --gridded --year 2022 --var sst
+weathernext-download --gridded --year 2022,2023 --var sst,msl
+weathernext-download --gridded --var z300,z500,u10,v10
+```
+
+`--var` is required. `--year 2022` selects `2022_to_2023`, and
+`--year 2022,2023` selects that period plus `2023_to_2024`. Omitting `--year`
+selects all three periods: `2022_to_2023`, `2023_to_2024`, and `2024_to_2025`.
+Only starting years 2022, 2023, and 2024 are supported.
+
+| Selection | Source variable | Meaning |
+| --- | --- | --- |
+| `sst` | `sea_surface_temperature` | Sea surface temperature |
+| `msl` | `mean_sea_level_pressure` | Mean sea-level pressure |
+| `t2m` | `2m_temperature` | Temperature at 2 m |
+| `u10` | `10m_u_component_of_wind` | Eastward wind at 10 m |
+| `v10` | `10m_v_component_of_wind` | Northward wind at 10 m |
+| `tp` | `total_precipitation_6hr` | Six-hour accumulated precipitation |
+| `z<level>` | `geopotential` | Geopotential |
+| `q<level>` | `specific_humidity` | Specific humidity |
+| `t<level>` | `temperature` | Temperature |
+| `u<level>` | `u_component_of_wind` | Eastward wind |
+| `v<level>` | `v_component_of_wind` | Northward wind |
+| `w<level>` | `vertical_velocity` | Vertical velocity |
+
+Pressure-level variables require a level suffix in hPa: `50`, `100`, `150`,
+`200`, `250`, `300`, `400`, `500`, `600`, `700`, `850`, `925`, or `1000`.
+For example, `z300` is valid but `z` is not. Levels are selected by coordinate
+value, not array index. No unit conversion is performed.
+
+Each variable and period is saved as a separate Zarr directory, such as
+`./gridded/sst_2022_to_2023.zarr`. Use `--output-dir` to change the root.
+All times, forecast steps, and grid points in the chosen stores are retained.
+Pressure-level output variables are named, for example, `geopotential_300hPa`.
+Existing destinations are skipped. Writes first use a `.zarr.part` directory;
+failed partial outputs are retained and must be moved aside before retrying.
+This mode does not resume partial downloads or provide NetCDF output.
+Failures produce a nonzero exit status. A Dask progress bar displays writing
+progress.
+
+### Gridded data storage sizes
+
+Gridded forecasts require substantial disk space even for one variable and
+one period. The following local Zarr sizes were measured with `du -sh` for
+the `2022_to_2023` dataset using the standalone reference scripts:
+
+| Variable | Zarr directory | Reported disk usage |
+| --- | --- | ---: |
+| Sea surface temperature (`sst`) | `sst_2022_to_2023.zarr` | 154 GiB |
+| Eastward wind at 10 m (`u10`) | `u10_2022_to_2023.zarr` | 310 GiB |
+| Northward wind at 10 m (`v10`) | `v10_2022_to_2023.zarr` | 313 GiB |
+| Geopotential at 300 hPa (`z300`) | `z300_2022_to_2023.zarr` | 247 GiB |
+| Mean sea-level pressure (`msl`) | `msl_2022_to_2023.zarr` | 245 GiB |
 
 ## Cyclone forecast products
 

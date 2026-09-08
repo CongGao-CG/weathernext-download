@@ -1,3 +1,3 @@
-"""Download cyclone forecasts from Google DeepMind Weather Lab."""
+"""Download WeatherNext model weights, gridded forecasts, and cyclone forecasts."""
 
-__version__ = "0.1.7"
+__version__ = "0.1.8"

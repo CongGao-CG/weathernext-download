@@ -67,7 +67,7 @@ def run(args):
         import zarr  # noqa: F401
         from dask.diagnostics import ProgressBar
     except ImportError:
-        print('Install gridded dependencies: pip install "weathernext-download[gridded]"', file=sys.stderr)
+        print("Missing libraries for --gridded. See the README's Gridded forecasts requirements.", file=sys.stderr)
         return 1
 
     output = Path(args.output_dir or "./gridded")
