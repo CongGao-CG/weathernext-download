@@ -241,6 +241,87 @@ class ArgumentValidationTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("unknown weight abbreviation", message)
 
+    def test_static_requires_a_value(self):
+        code, message = self._run_main(["--static"])
+        self.assertEqual(code, 2)
+        self.assertIn("expected one argument", message)
+
+    def test_static_and_weight_are_mutually_exclusive(self):
+        code, message = self._run_main(["--static", "zs", "--weight", "list"])
+        self.assertEqual(code, 2)
+        self.assertIn("not allowed with argument", message)
+
+    def test_cyclone_options_with_static_are_rejected(self):
+        code, message = self._run_main(["--static", "zs", "--time", "2022070100"])
+        self.assertEqual(code, 2)
+        self.assertIn("cyclone forecast options may only be used together with --cyclone", message)
+
+    def test_rename_with_static_is_rejected(self):
+        code, message = self._run_main(["--static", "zs", "--rename"])
+        self.assertEqual(code, 2)
+        self.assertIn("--rename and --hf may only be used together with --weight", message)
+
+    def test_unknown_static_name_is_rejected(self):
+        code, message = self._run_main(["--static", "not-a-real-static-file"])
+        self.assertEqual(code, 2)
+        self.assertIn("unknown static file", message)
+
+
+class CopyStaticFileTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: shutil.rmtree(self.tmp_dir, ignore_errors=True))
+
+    def test_copies_bundled_file_contents(self):
+        destination = self.tmp_dir / "zs.nc"
+        status = cli.copy_static_file("zs.nc", destination)
+
+        self.assertEqual(status, "copied")
+        self.assertTrue(destination.is_file())
+        self.assertGreater(destination.stat().st_size, 0)
+
+    def test_skips_existing_non_empty_file(self):
+        destination = self.tmp_dir / "zs.nc"
+        destination.write_bytes(b"already here")
+
+        status = cli.copy_static_file("zs.nc", destination)
+
+        self.assertEqual(status, "skipped")
+        self.assertEqual(destination.read_bytes(), b"already here")
+
+
+class RunStaticCommandTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: shutil.rmtree(self.tmp_dir, ignore_errors=True))
+        self.cwd_patcher = mock.patch.object(cli.Path, "cwd", return_value=self.tmp_dir)
+        self.cwd_patcher.start()
+        self.addCleanup(self.cwd_patcher.stop)
+
+    def _run(self, argv):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with mock.patch("sys.stdout", stdout), mock.patch("sys.stderr", stderr):
+            code = cli.main(argv)
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_static_all_copies_every_static_file(self):
+        code, stdout, _ = self._run(["--static", "all"])
+        self.assertEqual(code, 0)
+        self.assertTrue((self.tmp_dir / "zs.nc").is_file())
+        self.assertIn("1 copied, 0 skipped, 0 failed", stdout)
+
+    def test_static_zs_copies_only_zs(self):
+        code, stdout, _ = self._run(["--static", "zs"])
+        self.assertEqual(code, 0)
+        self.assertTrue((self.tmp_dir / "zs.nc").is_file())
+        self.assertIn("1 copied, 0 skipped, 0 failed", stdout)
+
+    def test_second_run_skips_existing_file(self):
+        self._run(["--static", "zs"])
+        code, stdout, _ = self._run(["--static", "zs"])
+        self.assertEqual(code, 0)
+        self.assertIn("0 copied, 1 skipped, 0 failed", stdout)
+
 
 class DownloadFileTests(unittest.TestCase):
     def setUp(self):

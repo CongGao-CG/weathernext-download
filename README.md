@@ -1,12 +1,13 @@
 # weathernext-download
 
 `weathernext-download` downloads pretrained WeatherNext model weights,
-gridded WeatherNext 2 ensemble-mean forecasts, and paired tropical-cyclone
-forecast files. Model weights come from
+static input fields, gridded WeatherNext 2 ensemble-mean forecasts, and
+paired tropical-cyclone forecast files. Model weights come from
 [Google's public `dm_graphcast` bucket](https://console.cloud.google.com/storage/browser/dm_graphcast/weathernext2/params?pageState=%28%22StorageObjectListTable%22:%28%22f%22:%22%255B%255D%22%29%29)
 by default, with
 [`CONGG/weathernext-weight`](https://huggingface.co/CONGG/weathernext-weight)
-available as an optional Hugging Face mirror. Gridded forecasts come from
+available as an optional Hugging Face mirror. Static input fields are bundled
+with this package rather than downloaded. Gridded forecasts come from
 Google's [WeatherNext 2 model guide](https://developers.google.com/weathernext/guides/models-wn2).
 Cyclone products come from
 [Google DeepMind Weather Lab](https://deepmind.google.com/science/weatherlab).
@@ -203,6 +204,24 @@ The model implementations and original model inventory are maintained in
 Google DeepMind's [WeatherNext repository](https://github.com/google-deepmind/weathernext#provided-pretrained-models).
 The model weights are separate from this package and remain subject to their
 own license and terms.
+
+## Static files
+
+`--static` copies static NetCDF fields bundled with the package itself,
+rather than downloading them over the network. Currently the only static
+file is `zs` (`zs.nc`), the surface geopotential field referenced as terrain
+elevation among the model inputs above.
+
+```bash
+weathernext-download --static zs
+weathernext-download --static all
+```
+
+`--static` requires a NAME. Passing `all` copies every bundled static file
+(currently only `zs.nc`); passing a specific name copies just that file.
+Files are copied to the current directory. An existing non-empty file with
+the same name is skipped rather than overwritten. `--rename`, `--hf`, and
+the cyclone options cannot be used with `--static`.
 
 ## Gridded forecasts (ensemble mean)
 

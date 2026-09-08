@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download WeatherNext model weights, gridded forecasts, or Weather Lab cyclone products."""
+"""Download WeatherNext model weights, static files, gridded forecasts, or Weather Lab cyclone products."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import sys
 import time as time_module
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from importlib.resources import files
 from itertools import chain
 from pathlib import Path
 from typing import Iterable, Iterator, TextIO
@@ -26,6 +27,11 @@ HUGGINGFACE_WEIGHT_BASE_URL = (
     "https://huggingface.co/CONGG/weathernext-weight/resolve/main"
 )
 WEIGHT_OUTPUT_DIRECTORY = "weathernext-weight"
+STATIC_DATA_PACKAGE = "weathernext_download"
+STATIC_DATA_DIRECTORY = "data"
+STATIC_FILES: dict[str, str] = {
+    "zs": "zs.nc",
+}
 FIRST_DEFAULT_DATE = date(2022, 1, 1)
 FORECAST_HOURS = (0, 6, 12, 18)
 CHUNK_SIZE = 1024 * 1024
@@ -315,14 +321,34 @@ def download_file(url: str, destination: Path, timeout: float, retries: int) -> 
     raise RuntimeError("unreachable")
 
 
+def copy_static_file(filename: str, destination: Path) -> str:
+    """Copy one bundled static NetCDF file atomically, returning ``copied`` or ``skipped``."""
+    if destination.is_file() and destination.stat().st_size > 0:
+        return "skipped"
+
+    source = files(STATIC_DATA_PACKAGE).joinpath(STATIC_DATA_DIRECTORY, filename)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.{os.getpid()}.part")
+    try:
+        with source.open("rb") as input_file, temporary.open("wb") as output_file:
+            while chunk := input_file.read(CHUNK_SIZE):
+                output_file.write(chunk)
+        temporary.replace(destination)
+        return "copied"
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Download WeatherNext weights, gridded forecasts, or paired cyclone files."
+            "Download WeatherNext weights, static files, gridded forecasts, or "
+            "paired cyclone files."
         ),
         epilog=(
-            "Use --cyclone with the cyclone options, or use --weight list, "
-            "--weight ABBREVIATION, or --weight all for pretrained weights."
+            "Use --weight list, --weight ABBREVIATION, or --weight all for "
+            "pretrained weights, --static NAME or --static all for bundled "
+            "static files, or --cyclone with the cyclone options."
         ),
     )
 
@@ -342,6 +368,13 @@ def build_parser() -> argparse.ArgumentParser:
         dest="weight_selection",
         metavar="ABBREVIATION",
         help="list or download pretrained weights (use 'list' or 'all')",
+    )
+    action.add_argument(
+        "--static",
+        dest="static_selection",
+        metavar="NAME",
+        help="copy bundled static NetCDF file(s) to the current directory "
+        "(use 'all' to copy every static file; currently: zs)",
     )
     parser.add_argument(
         "--rename",
@@ -637,6 +670,55 @@ def run_weight_command(
     return 1 if failures else 0
 
 
+def run_static_command(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> int:
+    if cyclone_only_options_selected(args):
+        parser.error(
+            "cyclone forecast options may only be used together with --cyclone"
+        )
+    if args.rename or args.hf:
+        parser.error("--rename and --hf may only be used together with --weight")
+
+    selection = args.static_selection.lower()
+    if selection == "all":
+        names = tuple(STATIC_FILES)
+    elif selection in STATIC_FILES:
+        names = (selection,)
+    else:
+        parser.error(
+            f"unknown static file {args.static_selection!r}; "
+            "use --static or --static all to see the available static files"
+        )
+
+    output_directory = Path.cwd()
+    failures: list[tuple[str, BaseException]] = []
+    copied = 0
+    skipped = 0
+    for name in names:
+        filename = STATIC_FILES[name]
+        destination = output_directory / filename
+        try:
+            status = copy_static_file(filename, destination)
+        except OSError as error:
+            failures.append((name, error))
+            print(f"FAILED     {name}: {error}", file=sys.stderr, flush=True)
+            continue
+
+        if status == "copied":
+            copied += 1
+            print(f"COPIED     {filename} -> {destination}", flush=True)
+        else:
+            skipped += 1
+            print(f"SKIPPED    {destination} (already exists)", flush=True)
+
+    print(
+        f"Finished: {copied} copied, {skipped} skipped, {len(failures)} failed.",
+        file=sys.stderr if failures else sys.stdout,
+    )
+    return 1 if failures else 0
+
+
 def run_cyclone_command(
     args: argparse.Namespace, parser: argparse.ArgumentParser
 ) -> int:
@@ -711,6 +793,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cyclone:
         return run_cyclone_command(args, parser)
+    if args.static_selection is not None:
+        return run_static_command(args, parser)
     return run_weight_command(args, parser)
 
 

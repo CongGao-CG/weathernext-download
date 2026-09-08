@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "weathernext-download"
-abstract: "Download WeatherNext model weights, gridded forecasts, and cyclone forecasts."
+abstract: "Download WeatherNext model weights, static files, gridded forecasts, and cyclone forecasts."
 authors:
   - family-names: "Gao"
     given-names: "Cong"
