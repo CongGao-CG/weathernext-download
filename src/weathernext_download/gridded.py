@@ -23,6 +23,35 @@ ATMOSPHERIC = {
 }
 BASE = "gs://weathernext/weathernext_2_0_0_mean/zarr"
 
+ARCO_ERA5_URL = "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"
+ARCO_ERA5_REFERENCE_TIME = "2000-01-01T00:00:00"
+STATIC_GCLOUD_SPECS = {
+    "zs": {
+        "source_variable": "geopotential_at_surface",
+        "attrs": {
+            "units": "m2 s-2",
+            "long_name": "Surface geopotential",
+            "short_name": "zs",
+            "standard_name": "surface_geopotential",
+        },
+    },
+    "lsm": {
+        "source_variable": "land_sea_mask",
+        "attrs": {
+            "units": "1",
+            "long_name": "Land-sea mask",
+            "short_name": "lsm",
+            "standard_name": "land_binary_mask",
+        },
+    },
+}
+STATIC_GCLOUD_REQUIREMENTS = (
+    ("xarray", "xarray"),
+    ("zarr", "zarr"),
+    ("gcsfs", "gcsfs"),
+    ("netCDF4", "netCDF4"),
+)
+
 
 def parse_years(value):
     parts = [part.strip() for part in value.split(",")]
@@ -70,20 +99,52 @@ GRIDDED_REQUIREMENTS = (
 )
 
 
-def run(args):
+def missing_libraries(requirements):
     missing = []
-    for module_name, package_name in GRIDDED_REQUIREMENTS:
+    for module_name, package_name in requirements:
         try:
             importlib.import_module(module_name)
         except ImportError:
             missing.append(package_name)
+    return missing
+
+
+def missing_libraries_message(flag, missing):
+    install_args = " ".join(shlex.quote(package) for package in missing)
+    return (
+        f"Missing libraries for {flag}: {', '.join(missing)}. "
+        f"Install with: pip install {install_args}"
+    )
+
+
+def fetch_static_from_gcloud(name: str, destination: Path) -> str:
+    """Fetch one static field fresh from the ARCO-ERA5 Zarr archive, returning ``downloaded`` or ``skipped``."""
+    if destination.is_file() and destination.stat().st_size > 0:
+        return "skipped"
+
+    import xarray as xr
+
+    spec = STATIC_GCLOUD_SPECS[name]
+    dataset = xr.open_zarr(ARCO_ERA5_URL, chunks=None, storage_options=dict(token="anon"))
+    field = (
+        dataset[spec["source_variable"]]
+        .sel(time=ARCO_ERA5_REFERENCE_TIME)
+        .drop_vars("time")
+        .rename(name)
+    )
+    field.attrs.update(spec["attrs"])
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(destination.name + ".part")
+    field.to_netcdf(temporary, encoding={name: {"zlib": True, "complevel": 4}})
+    temporary.replace(destination)
+    return "downloaded"
+
+
+def run(args):
+    missing = missing_libraries(GRIDDED_REQUIREMENTS)
     if missing:
-        install_args = " ".join(shlex.quote(package) for package in missing)
-        print(
-            f"Missing libraries for --gridded: {', '.join(missing)}. "
-            f"Install with: pip install {install_args}",
-            file=sys.stderr,
-        )
+        print(missing_libraries_message("--gridded", missing), file=sys.stderr)
         return 1
 
     import xarray as xr

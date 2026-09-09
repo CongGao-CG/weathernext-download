@@ -208,20 +208,39 @@ own license and terms.
 ## Static files
 
 `--static` copies static NetCDF fields bundled with the package itself,
-rather than downloading them over the network. Currently the only static
-file is `zs` (`zs.nc`), the surface geopotential field referenced as terrain
-elevation among the model inputs above.
+rather than downloading them over the network. These correspond to the
+static surface inputs listed among the model inputs above: `zs` (`zs.nc`,
+surface geopotential, used as terrain elevation) and `lsm` (`lsm.nc`,
+land-sea mask).
 
 ```bash
 weathernext-download --static zs
+weathernext-download --static lsm
 weathernext-download --static all
 ```
 
 `--static` requires a NAME. Passing `all` copies every bundled static file
-(currently only `zs.nc`); passing a specific name copies just that file.
-Files are copied to the current directory. An existing non-empty file with
-the same name is skipped rather than overwritten. `--rename`, `--hf`, and
-the cyclone options cannot be used with `--static`.
+(currently `zs.nc` and `lsm.nc`); passing a specific name copies just that
+file. Files are copied to the current directory. An existing non-empty file
+with the same name is skipped rather than overwritten. `--rename`, `--hf`,
+and the cyclone options cannot be used with `--static`.
+
+Add `--gcloud` to fetch the field fresh from Google Cloud instead of copying
+the bundled copy:
+
+```bash
+weathernext-download --static zs --gcloud
+weathernext-download --static all --gcloud
+```
+
+`--gcloud` requires `--static` and re-extracts the requested field(s) from
+the public [ARCO-ERA5 Zarr archive](https://console.cloud.google.com/storage/browser/gcp-public-data-arco-era5)
+(`gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3`),
+using an anonymous GCS connection (no Google account required). Since `zs`
+and `lsm` are time-invariant fields, a single reference time is read and the
+time dimension is dropped. Using `--gcloud` requires `xarray`, `zarr`,
+`gcsfs`, and `netCDF4` in your Python environment; these libraries are not
+installed by this package and must be provided separately.
 
 ## Gridded forecasts (ensemble mean)
 

@@ -31,6 +31,7 @@ STATIC_DATA_PACKAGE = "weathernext_download"
 STATIC_DATA_DIRECTORY = "data"
 STATIC_FILES: dict[str, str] = {
     "zs": "zs.nc",
+    "lsm": "lsm.nc",
 }
 FIRST_DEFAULT_DATE = date(2022, 1, 1)
 FORECAST_HOURS = (0, 6, 12, 18)
@@ -374,7 +375,13 @@ def build_parser() -> argparse.ArgumentParser:
         dest="static_selection",
         metavar="NAME",
         help="copy bundled static NetCDF file(s) to the current directory "
-        "(use 'all' to copy every static file; currently: zs)",
+        "(use 'all' to copy every static file; currently: zs, lsm)",
+    )
+    parser.add_argument(
+        "--gcloud",
+        action="store_true",
+        help="fetch --static file(s) fresh from Google Cloud instead of "
+        "copying the bundled copy (only with --static)",
     )
     parser.add_argument(
         "--rename",
@@ -693,8 +700,46 @@ def run_static_command(
 
     output_directory = Path.cwd()
     failures: list[tuple[str, BaseException]] = []
-    copied = 0
+    completed = 0
     skipped = 0
+
+    if args.gcloud:
+        from .gridded import (
+            STATIC_GCLOUD_REQUIREMENTS,
+            fetch_static_from_gcloud,
+            missing_libraries,
+            missing_libraries_message,
+        )
+
+        missing = missing_libraries(STATIC_GCLOUD_REQUIREMENTS)
+        if missing:
+            print(missing_libraries_message("--gcloud", missing), file=sys.stderr)
+            return 1
+
+        for name in names:
+            filename = STATIC_FILES[name]
+            destination = output_directory / filename
+            try:
+                status = fetch_static_from_gcloud(name, destination)
+            except Exception as error:
+                failures.append((name, error))
+                print(f"FAILED     {name}: {error}", file=sys.stderr, flush=True)
+                continue
+
+            if status == "downloaded":
+                completed += 1
+                print(f"DOWNLOADED {filename} -> {destination}", flush=True)
+            else:
+                skipped += 1
+                print(f"SKIPPED    {destination} (already exists)", flush=True)
+
+        print(
+            f"Finished: {completed} downloaded, {skipped} skipped, "
+            f"{len(failures)} failed.",
+            file=sys.stderr if failures else sys.stdout,
+        )
+        return 1 if failures else 0
+
     for name in names:
         filename = STATIC_FILES[name]
         destination = output_directory / filename
@@ -706,14 +751,14 @@ def run_static_command(
             continue
 
         if status == "copied":
-            copied += 1
+            completed += 1
             print(f"COPIED     {filename} -> {destination}", flush=True)
         else:
             skipped += 1
             print(f"SKIPPED    {destination} (already exists)", flush=True)
 
     print(
-        f"Finished: {copied} copied, {skipped} skipped, {len(failures)} failed.",
+        f"Finished: {completed} copied, {skipped} skipped, {len(failures)} failed.",
         file=sys.stderr if failures else sys.stdout,
     )
     return 1 if failures else 0
@@ -790,6 +835,8 @@ def main(argv: list[str] | None = None) -> int:
         return run(args)
     if args.year is not None or args.variables is not None or args.output_dir is not None:
         parser.error("--year, --var and --output-dir require --gridded")
+    if args.gcloud and args.static_selection is None:
+        parser.error("--gcloud may only be used together with --static")
 
     if args.cyclone:
         return run_cyclone_command(args, parser)

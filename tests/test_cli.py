@@ -266,6 +266,11 @@ class ArgumentValidationTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("unknown static file", message)
 
+    def test_gcloud_without_static_is_rejected(self):
+        code, message = self._run_main(["--weight", "list", "--gcloud"])
+        self.assertEqual(code, 2)
+        self.assertIn("--gcloud may only be used together with --static", message)
+
 
 class CopyStaticFileTests(unittest.TestCase):
     def setUp(self):
@@ -275,6 +280,14 @@ class CopyStaticFileTests(unittest.TestCase):
     def test_copies_bundled_file_contents(self):
         destination = self.tmp_dir / "zs.nc"
         status = cli.copy_static_file("zs.nc", destination)
+
+        self.assertEqual(status, "copied")
+        self.assertTrue(destination.is_file())
+        self.assertGreater(destination.stat().st_size, 0)
+
+    def test_copies_bundled_lsm_file_contents(self):
+        destination = self.tmp_dir / "lsm.nc"
+        status = cli.copy_static_file("lsm.nc", destination)
 
         self.assertEqual(status, "copied")
         self.assertTrue(destination.is_file())
@@ -308,12 +321,21 @@ class RunStaticCommandTests(unittest.TestCase):
         code, stdout, _ = self._run(["--static", "all"])
         self.assertEqual(code, 0)
         self.assertTrue((self.tmp_dir / "zs.nc").is_file())
-        self.assertIn("1 copied, 0 skipped, 0 failed", stdout)
+        self.assertTrue((self.tmp_dir / "lsm.nc").is_file())
+        self.assertIn("2 copied, 0 skipped, 0 failed", stdout)
 
     def test_static_zs_copies_only_zs(self):
         code, stdout, _ = self._run(["--static", "zs"])
         self.assertEqual(code, 0)
         self.assertTrue((self.tmp_dir / "zs.nc").is_file())
+        self.assertFalse((self.tmp_dir / "lsm.nc").exists())
+        self.assertIn("1 copied, 0 skipped, 0 failed", stdout)
+
+    def test_static_lsm_copies_only_lsm(self):
+        code, stdout, _ = self._run(["--static", "lsm"])
+        self.assertEqual(code, 0)
+        self.assertTrue((self.tmp_dir / "lsm.nc").is_file())
+        self.assertFalse((self.tmp_dir / "zs.nc").exists())
         self.assertIn("1 copied, 0 skipped, 0 failed", stdout)
 
     def test_second_run_skips_existing_file(self):
@@ -321,6 +343,66 @@ class RunStaticCommandTests(unittest.TestCase):
         code, stdout, _ = self._run(["--static", "zs"])
         self.assertEqual(code, 0)
         self.assertIn("0 copied, 1 skipped, 0 failed", stdout)
+
+
+class RunStaticGcloudCommandTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: shutil.rmtree(self.tmp_dir, ignore_errors=True))
+        self.cwd_patcher = mock.patch.object(cli.Path, "cwd", return_value=self.tmp_dir)
+        self.cwd_patcher.start()
+        self.addCleanup(self.cwd_patcher.stop)
+
+    def _run(self, argv):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with mock.patch("sys.stdout", stdout), mock.patch("sys.stderr", stderr):
+            code = cli.main(argv)
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_gcloud_fetches_instead_of_copying_bundled_file(self):
+        from weathernext_download import gridded
+
+        def fake_fetch(name, destination):
+            destination.write_bytes(b"fetched-from-gcloud")
+            return "downloaded"
+
+        with mock.patch.object(gridded, "missing_libraries", return_value=[]):
+            with mock.patch.object(gridded, "fetch_static_from_gcloud", side_effect=fake_fetch):
+                code, stdout, _ = self._run(["--static", "zs", "--gcloud"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual((self.tmp_dir / "zs.nc").read_bytes(), b"fetched-from-gcloud")
+        self.assertIn("1 downloaded, 0 skipped, 0 failed", stdout)
+
+    def test_gcloud_skips_existing_file(self):
+        from weathernext_download import gridded
+
+        with mock.patch.object(gridded, "missing_libraries", return_value=[]):
+            with mock.patch.object(gridded, "fetch_static_from_gcloud", return_value="skipped") as fetch:
+                code, stdout, _ = self._run(["--static", "zs", "--gcloud"])
+
+        fetch.assert_called_once()
+        self.assertEqual(code, 0)
+        self.assertIn("0 downloaded, 1 skipped, 0 failed", stdout)
+
+    def test_gcloud_reports_missing_libraries(self):
+        from weathernext_download import gridded
+
+        with mock.patch.object(gridded, "missing_libraries", return_value=["netCDF4"]):
+            code, _, stderr = self._run(["--static", "zs", "--gcloud"])
+
+        self.assertEqual(code, 1)
+        self.assertIn("Missing libraries for --gcloud: netCDF4", stderr)
+
+    def test_gcloud_reports_fetch_failure(self):
+        from weathernext_download import gridded
+
+        with mock.patch.object(gridded, "missing_libraries", return_value=[]):
+            with mock.patch.object(gridded, "fetch_static_from_gcloud", side_effect=RuntimeError("boom")):
+                code, _, stderr = self._run(["--static", "zs", "--gcloud"])
+
+        self.assertEqual(code, 1)
+        self.assertIn("FAILED     zs: boom", stderr)
 
 
 class DownloadFileTests(unittest.TestCase):
